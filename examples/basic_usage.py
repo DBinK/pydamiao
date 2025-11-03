@@ -6,19 +6,19 @@ from pydamiao.enums import DM_Motor_Type, Control_Type, DM_variable
 from pydamiao.motor import Motor, MotorControl
 
 # 创建电机对象和串口对象
-motor1 = Motor(DM_Motor_Type.DM4310, 0x01, 0x11)  
-motor2 = Motor(DM_Motor_Type.DM4310, 0x05, 0x15) 
+motor1 = Motor(DM_Motor_Type.DM4310, 0x01, 0x11)
+motor2 = Motor(DM_Motor_Type.DM4310, 0x05, 0x15)
 serial_device = serial.Serial("COM8", 921600, timeout=0.5)
-motor_control = MotorControl(serial_device) 
-motor_control.addMotor(motor1)
-motor_control.addMotor(motor2)  
+motor_control = MotorControl(serial_device)
+motor_control.add_motor(motor1)
+motor_control.add_motor(motor2)
 
 # 读取和修改电机参数示例
-if motor_control.switchControlMode(motor1, Control_Type.POS_VEL):
+if motor_control.switch_control_mode(motor1, Control_Type.POS_VEL):
     print("switch POS_VEL success")
-if motor_control.switchControlMode(motor2, Control_Type.VEL):
+if motor_control.switch_control_mode(motor2, Control_Type.VEL):
     print("switch VEL success")
-    
+
 print("sub_ver:", motor_control.read_motor_param(motor1, DM_variable.sub_ver))
 print("Gr:", motor_control.read_motor_param(motor1, DM_variable.Gr))
 # if motor_control.change_motor_param(motor1, DM_variable.KP_APR, 54):
@@ -47,11 +47,11 @@ while i < 10000:
     i += 1
     # motor_control.control_pos_force(motor1, 10, 1000, 100)
     # motor_control.control_Vel(motor1, q * 5)
-    motor_control.control_Pos_Vel(motor1, q * 8, 30)
+    motor_control.control_pos_vel(motor1, q * 8, 30)
     # print("Motor1:", "POS:", motor1.getPosition(), "VEL:", motor1.getVelocity(), "TORQUE:", motor1.getTorque())
     # motor_control.controlMIT(motor2, 35, 0.1, 8 * q, 0, 0)
 
-    motor_control.control_Vel(motor2, 8 * q)
+    motor_control.control_vel(motor2, 8 * q)
     # print("Motor2:", "POS:", motor2.getPosition(), "VEL:", motor2.getVelocity(), "TORQUE:", motor2.getTorque())
     # print(motor1.getTorque())
     # print(motor2.getTorque())

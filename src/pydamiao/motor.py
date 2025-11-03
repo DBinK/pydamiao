@@ -1,8 +1,10 @@
 # src/pydamiao/motor.py
+from __future__ import annotations
 
 from time import sleep
 
 import numpy as np
+from serial import Serial
 
 from pydamiao.utils import (
     float_to_uint,
@@ -41,28 +43,28 @@ class Motor:
         self.state_dq = dq
         self.state_tau = tau
 
-    def getPosition(self):
+    def get_position(self):
         """
         get the position of the motor 获取电机位置
         :return: the position of the motor 电机位置
         """
         return self.state_q
 
-    def getVelocity(self):
+    def get_velocity(self):
         """
         get the velocity of the motor 获取电机速度
         :return: the velocity of the motor 电机速度
         """
         return self.state_dq
 
-    def getTorque(self):
+    def get_torque(self):
         """
         get the torque of the motor 获取电机力矩
         :return: the torque of the motor 电机力矩
         """
         return self.state_tau
 
-    def getParam(self, RID):
+    def get_param(self, RID):
         """
         get the parameter of the motor 获取电机内部的参数，需要提前读取
         :param RID: DM_variable 电机参数
@@ -76,59 +78,28 @@ class Motor:
 
 class MotorControl:
     send_data_frame = np.array(
-        [
-            0x55,
-            0xAA,
-            0x1E,
-            0x03,
-            0x01,
-            0x00,
-            0x00,
-            0x00,
-            0x0A,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0,
-            0,
-            0,
-            0,
-            0x00,
-            0x08,
-            0x00,
-            0x00,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0x00,
-        ],
-        np.uint8,
-    )
-    #                4310           4310_48        4340           4340_48
+        object=[0x55, 0xAA, 0x1e, 0x03, 0x01, 
+                0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 
+                0, 0, 0, 0, 0x00, 0x08, 0x00, 0x00, 
+                0, 0, 0, 0, 0, 0, 0, 0, 0x00], 
+        dtype=np.uint8)  # fmt: off
+
     Limit_Param = [
-        [12.5, 30, 10],
-        [12.5, 50, 10],
-        [12.5, 8, 28],
-        [12.5, 10, 28],
-        # 6006           8006           8009            10010L         10010
-        [12.5, 45, 20],
-        [12.5, 45, 40],
-        [12.5, 45, 54],
-        [12.5, 25, 200],
-        [12.5, 20, 200],
-        # H3510            DMG62150      DMH6220
-        [12.5, 280, 1],
-        [12.5, 45, 10],
-        [12.5, 45, 10],
+        [12.5, 30, 10],  # 4310
+        [12.5, 50, 10],  # 4310_48V
+        [12.5, 8, 28],  # 4340
+        [12.5, 10, 28],  # 4340_48V
+        [12.5, 45, 20],  # 6006
+        [12.5, 45, 40],  # 8006
+        [12.5, 45, 54],  # 8009
+        [12.5, 25, 200],  # 10010L
+        [12.5, 20, 200],  # 10010
+        [12.5, 280, 1],  # H3510
+        [12.5, 45, 10],  # DMG62150
+        [12.5, 45, 10],  # DMH6220
     ]
 
-    def __init__(self, serial_device):
+    def __init__(self, serial_device: Serial):
         """
         define MotorControl object 定义电机控制对象
         :param serial_device: serial object 串口对象
@@ -141,7 +112,7 @@ class MotorControl:
             serial_device.close()
         self.serial_.open()
 
-    def controlMIT(
+    def control_mit(
         self, DM_Motor, kp: float, kd: float, q: float, dq: float, tau: float
     ):
         """
@@ -198,10 +169,10 @@ class MotorControl:
         :param tau: torque  期望力矩
         :param delay: delay time 延迟时间 单位秒
         """
-        self.controlMIT(DM_Motor, kp, kd, q, dq, tau)
+        self.control_mit(DM_Motor, kp, kd, q, dq, tau)
         sleep(delay)
 
-    def control_Pos_Vel(self, Motor, P_desired: float, V_desired: float):
+    def control_pos_vel(self, Motor, P_desired: float, V_desired: float):
         """
         control the motor in position and velocity control mode 电机位置速度控制模式
         :param Motor: Motor object 电机对象
@@ -222,7 +193,7 @@ class MotorControl:
         # time.sleep(0.001)
         self.recv()  # receive the data from serial port
 
-    def control_Vel(self, Motor, Vel_desired):
+    def control_vel(self, Motor, Vel_desired):
         """
         control the motor in velocity control mode 电机速度控制模式
         :param Motor: Motor object 电机对象
@@ -305,7 +276,8 @@ class MotorControl:
 
     def recv(self):
         # 把上次没有解析完的剩下的也放进来
-        data_recv = b"".join([self.data_save, self.serial_.read_all()])
+        read_data = self.serial_.read_all()
+        data_recv = b"".join([self.data_save, read_data if read_data is not None else b''])
         packets = self.__extract_packets(data_recv)
         for packet in packets:
             data = packet[7:15]
@@ -377,7 +349,7 @@ class MotorControl:
                 num = uint8s_to_float(data[4], data[5], data[6], data[7])
                 self.motors_map[masterid].temp_param_dict[RID] = num
 
-    def addMotor(self, Motor):
+    def add_motor(self, Motor):
         """
         add motor to the motor control object 添加电机到电机控制对象
         :param Motor: Motor object 电机对象
@@ -445,7 +417,7 @@ class MotorControl:
             data_buf[4:8] = data_to_uint8s(int(data))
         self.__send_data(0x7FF, data_buf)
 
-    def switchControlMode(self, Motor, ControlMode):
+    def switch_control_mode(self, Motor, ControlMode):
         """
         switch the control mode of the motor 切换电机控制模式
         :param Motor: Motor object 电机对象
