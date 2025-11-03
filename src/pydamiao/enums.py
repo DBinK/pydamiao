@@ -2,7 +2,8 @@
 
 from enum import IntEnum
 
-class DM_Motor_Type(IntEnum):
+
+class DamiaoMotorType(IntEnum):
     DM4310 = 0
     DM4310_48V = 1
     DM4340 = 2
@@ -17,7 +18,7 @@ class DM_Motor_Type(IntEnum):
     DMG6220 = 11
 
 
-class DM_variable(IntEnum):
+class MotorVariable(IntEnum):
     UV_Value = 0
     KT_Value = 1
     OT_Value = 2
@@ -65,8 +66,8 @@ class DM_variable(IntEnum):
     xout = 81
 
 
-class Control_Type(IntEnum):
+class ControlType(IntEnum):
     MIT = 1
     POS_VEL = 2
     VEL = 3
-    Torque_Pos = 4
+    TORQUE_POS = 4

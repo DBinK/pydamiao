@@ -1,6 +1,4 @@
 # src/pydamiao/motor.py
-from __future__ import annotations
-
 from time import sleep
 
 import numpy as np
@@ -15,7 +13,7 @@ from pydamiao.utils import (
     uint8s_to_uint32,
     uint8s_to_float,
 )
-from pydamiao.enums import Control_Type
+from pydamiao.enums import ControlType
 
 
 class Motor:
@@ -35,7 +33,7 @@ class Motor:
         self.MasterID = MasterID
         self.MotorType = MotorType
         self.isEnable = False
-        self.NowControlMode = Control_Type.MIT
+        self.NowControlMode = ControlType.MIT
         self.temp_param_dict = {}
 
     def recv_data(self, q: float, dq: float, tau: float):
@@ -277,7 +275,9 @@ class MotorControl:
     def recv(self):
         # 把上次没有解析完的剩下的也放进来
         read_data = self.serial_.read_all()
-        data_recv = b"".join([self.data_save, read_data if read_data is not None else b''])
+        data_recv = b"".join(
+            [self.data_save, read_data if read_data is not None else b""]
+        )
         packets = self.__extract_packets(data_recv)
         for packet in packets:
             data = packet[7:15]
