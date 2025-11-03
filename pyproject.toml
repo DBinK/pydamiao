@@ -1,0 +1,21 @@
+[project]
+name = "pydamiao"
+version = "0.1.0"
+description = "An unofficial Damiao motor control library, developed based on the official SDK. 一个非官方的达妙电机控制库, 基于官方sdk二次开发"
+readme = "README.md"
+authors = [
+    { name = "DBinK", email = "DBinKv1@Gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.0.1",
+    "pyserial>=3.5",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.0,<0.10.0"]
+build-backend = "uv_build"
+
+[project.urls]
+Homepage = "https://github.com/DBinK/pydamiao"
+Repository = "https://github.com/DBinK/pydamiao"

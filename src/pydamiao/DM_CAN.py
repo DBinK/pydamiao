@@ -1,8 +1,8 @@
-from time import sleep
-import numpy as np
 from enum import IntEnum
-from struct import unpack
-from struct import pack
+from struct import pack, unpack
+from time import sleep
+
+import numpy as np
 
 
 class Motor:
