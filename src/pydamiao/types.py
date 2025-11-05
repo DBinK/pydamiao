@@ -1,9 +1,8 @@
 # src/pydamiao/enums.py
 
 from enum import IntEnum
-from typing import NewType
 
-CanID = NewType("CanID", int)  # CAN ID 类型, 0x01 ~ 0xFF
+CanID = int  # CAN ID 类型, 0x01 ~ 0xFF
 
 class DamiaoMotorType(IntEnum):
     DM4310 = 0

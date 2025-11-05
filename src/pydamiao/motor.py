@@ -42,21 +42,21 @@ class Motor:
         self.state_dq = dq
         self.state_tau = tau
 
-    def get_position(self):
+    def get_position(self) -> float:
         """
         get the position of the motor 获取电机位置
         :return: the position of the motor 电机位置
         """
         return self.state_q
 
-    def get_velocity(self):
+    def get_velocity(self) -> float:
         """
         get the velocity of the motor 获取电机速度
         :return: the velocity of the motor 电机速度
         """
         return self.state_dq
 
-    def get_torque(self):
+    def get_torque(self) -> float:
         """
         get the torque of the motor 获取电机力矩
         :return: the torque of the motor 电机力矩
@@ -112,7 +112,7 @@ class MotorControl:
         self.serial_.open()
 
     def control_mit(
-        self, dm_motor, kp: float, kd: float, q: float, dq: float, tau: float
+        self, dm_motor: Motor, kp: float, kd: float, q: float, dq: float, tau: float
     ):
         """
         MIT Control Mode Function 达妙电机MIT控制模式函数
@@ -150,7 +150,7 @@ class MotorControl:
 
     def control_delay(
         self,
-        dm_motor,
+        dm_motor: Motor,
         kp: float,
         kd: float,
         q: float,
@@ -171,7 +171,7 @@ class MotorControl:
         self.control_mit(dm_motor, kp, kd, q, dq, tau)
         sleep(delay)
 
-    def control_pos_vel(self, dm_motor, pos_des: float, vel_des: float):
+    def control_pos_vel(self, dm_motor: Motor, pos_des: float, vel_des: float):
         """
         control the motor in position and velocity control mode 电机位置速度控制模式
         :param dm_motor: Motor object 电机对象
@@ -192,7 +192,7 @@ class MotorControl:
         # time.sleep(0.001)
         self.recv()  # receive the data from serial port
 
-    def control_vel(self, dm_motor, vel_des):
+    def control_vel(self, dm_motor: Motor, vel_des: float):
         """
         control the motor in velocity control mode 电机速度控制模式
         :param dm_motor: Motor object 电机对象
@@ -208,7 +208,7 @@ class MotorControl:
         self.__send_data(motorid, data_buf)
         self.recv()  # receive the data from serial port
 
-    def control_pos_force(self, dm_motor, pos_des: float, vel_des, i_des):
+    def control_pos_force(self, dm_motor: Motor, pos_des: float, vel_des: float, i_des):
         """
         control the motor in EMIT control mode 电机力位混合模式
         :param pos_des: desired position rad  期望位置 单位为rad
@@ -232,7 +232,7 @@ class MotorControl:
         self.__send_data(motorid, data_buf)
         self.recv()  # receive the data from serial port
 
-    def enable(self, dm_motor):
+    def enable(self, dm_motor: Motor):
         """
         enable motor 使能电机
         最好在上电后几秒后再使能电机
@@ -242,7 +242,7 @@ class MotorControl:
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
-    def enable_old(self, dm_motor, control_mode):
+    def enable_old(self, dm_motor: Motor, control_mode: ControlType):
         """
         enable motor old firmware 使能电机旧版本固件，这个是为了旧版本电机固件的兼容性
         可恶的旧版本固件使能需要加上偏移量
@@ -255,7 +255,7 @@ class MotorControl:
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
-    def disable(self, dm_motor):
+    def disable(self, dm_motor: Motor):
         """
         disable motor 失能电机
         :param dm_motor: Motor object 电机对象
@@ -264,7 +264,7 @@ class MotorControl:
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
-    def set_zero_position(self, dm_motor):
+    def set_zero_position(self, dm_motor: Motor):
         """
         set the zero position of the motor 设置电机0位
         :param dm_motor: Motor object 电机对象
@@ -350,7 +350,7 @@ class MotorControl:
                 num = uint8s_to_float(data[4], data[5], data[6], data[7])
                 self.motors_map[master_id].temp_param_dict[RID] = num
 
-    def add_motor(self, dm_motor):
+    def add_motor(self, dm_motor: Motor):
         """
         add motor to the motor control object 添加电机到电机控制对象
         :param dm_motor: Motor object 电机对象
@@ -360,11 +360,11 @@ class MotorControl:
             self.motors_map[dm_motor.master_id] = dm_motor
         return True
 
-    def __control_cmd(self, dm_motor, cmd: np.uint8):
+    def __control_cmd(self, dm_motor: Motor, cmd: np.uint8):
         data_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, cmd], np.uint8)
         self.__send_data(dm_motor.slave_id, data_buf)
 
-    def __send_data(self, motor_id, data):
+    def __send_data(self, motor_id: CanID, data):
         """
         send data to the motor 发送数据到电机
         :param motor_id:
@@ -376,7 +376,7 @@ class MotorControl:
         self.send_data_frame[21:29] = data
         self.serial_.write(bytes(self.send_data_frame.T))
 
-    def __read_RID_param(self, dm_motor, RID):
+    def __read_RID_param(self, dm_motor: Motor, RID):
         can_id_l = dm_motor.slave_id & 0xFF  # id low 8 bits
         can_id_h = (dm_motor.slave_id >> 8) & 0xFF  # id high 8 bits
         data_buf = np.array(
@@ -394,7 +394,7 @@ class MotorControl:
         )
         self.__send_data(0x7FF, data_buf)
 
-    def __write_motor_param(self, dm_motor, RID, data):
+    def __write_motor_param(self, dm_motor: Motor, RID, data):
         can_id_l = dm_motor.slave_id & 0xFF  # id low 8 bits
         can_id_h = (dm_motor.slave_id >> 8) & 0xFF  # id high 8 bits
         data_buf = np.array(
@@ -418,7 +418,7 @@ class MotorControl:
             data_buf[4:8] = data_to_uint8s(int(data))
         self.__send_data(0x7FF, data_buf)
 
-    def switch_control_mode(self, dm_motor, control_mode):
+    def switch_control_mode(self, dm_motor: Motor, control_mode):
         """
         switch the control mode of the motor 切换电机控制模式
         :param dm_motor: Motor object 电机对象
@@ -505,7 +505,7 @@ class MotorControl:
         self.__send_data(0x7FF, data_buf)
         self.recv()  # receive the data from serial port
 
-    def change_motor_param(self, dm_motor, RID, data):
+    def change_motor_param(self, dm_motor: Motor, RID, data):
         """
         change the RID of the motor 改变电机的参数
         :param dm_motor: Motor object 电机对象
@@ -533,7 +533,7 @@ class MotorControl:
             sleep(retry_interval)
         return False
 
-    def read_motor_param(self, dm_motor, RID):
+    def read_motor_param(self, dm_motor: Motor, RID):
         """
         read only the RID of the motor 读取电机的内部信息例如 版本号等
         :param dm_motor: Motor object 电机对象
