@@ -9,7 +9,7 @@
 
 ## 快速开始
 
-从 PyPi 安装:
+从 PyPi 安装（暂不支持）:
 
 ```bash
 pip install pydamiao
@@ -66,3 +66,4 @@ for i in range(10000):
 # 7. 清理
 serial_device.close()
 ```
+
