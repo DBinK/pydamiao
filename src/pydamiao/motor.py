@@ -179,7 +179,7 @@ class MotorControl:
         # time.sleep(0.001)
         self.recv()  # receive the data from serial port
 
-    def control_vel(self, Motor: Motor, Vel_desired):
+    def control_vel(self, Motor: Motor, Vel_desired: float):
         """
         control the motor in velocity control mode 电机速度控制模式
         :param Motor: Motor object 电机对象
@@ -229,7 +229,7 @@ class MotorControl:
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
-    def enable_old(self, Motor: Motor, ControlMode):
+    def enable_old(self, Motor: Motor, ControlMode: ControlType):
         """
         enable motor old firmware 使能电机旧版本固件，这个是为了旧版本电机固件的兼容性
         可恶的旧版本固件使能需要加上偏移量
@@ -460,7 +460,7 @@ class MotorControl:
         self.__send_data(0x7FF, data_buf)
         sleep(0.001)
 
-    def change_limit_param(self, Motor_Type, PMAX, VMAX, TMAX):
+    def change_limit_param(self, Motor_Type: DamiaoMotorType, PMAX: float, VMAX: float, TMAX: float):
         """
         change the PMAX VMAX TMAX of the motor 改变电机的PMAX VMAX TMAX
         :param Motor_Type:

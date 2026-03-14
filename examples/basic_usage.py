@@ -7,7 +7,7 @@ from pydamiao.motor import Motor, MotorControl
 
 # 创建电机对象和串口对象
 motor1 = Motor(DamiaoMotorType.DM4310, 0x06, 0x12)
-motor2 = Motor(DamiaoMotorType.DM4310, 0x05, 0x18)
+motor2 = Motor(DamiaoMotorType.DM4310, 0x05, 0x12)
 serial_device = serial.Serial("COM3", 921600, timeout=0.5)
 motor_control = MotorControl(serial_device)
 motor_control.add_motor(motor1)
@@ -52,13 +52,14 @@ while i < 10000:
     # print("Motor1:", "POS:", motor1.get_position(), "VEL:", motor1.get_velocity(), "TORQUE:", motor1.get_torque())
     # motor_control.control_mit(motor2, 35, 0.1, 8 * q, 0, 0)
 
-    # motor_control.control_vel(motor2, 8 * q)
-    motor_control.control_pos_vel(motor1, q * 3, 3)
+    motor_control.control_vel(motor2, 8 * q)
     # print("Motor2:", "POS:", motor2.get_position(), "VEL:", motor2.get_velocity(), "TORQUE:", motor2.get_torque())
     # print(motor1.get_torque())
     # print(motor2.get_torque())
     time.sleep(0.001)
     # motor_control.control(motor3, 50, 0.3, q, 0, 0)
+
+motor_control.control_vel(motor2, 0.0)
 
 # 语句结束关闭串口
 serial_device.close()
