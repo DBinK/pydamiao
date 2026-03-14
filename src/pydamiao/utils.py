@@ -4,12 +4,12 @@ from struct import pack, unpack
 
 import numpy as np
 
-def LIMIT_MIN_MAX(x, min_value, max_value):
+def limit_min_max(x, min_value, max_value):
         return min(max(x, min_value), max_value)
 
 
 def float_to_uint(x: float, x_min: float, x_max: float, bits):
-    x = LIMIT_MIN_MAX(x, x_min, x_max)
+    x = limit_min_max(x, x_min, x_max)
     span = x_max - x_min
     data_norm = (x - x_min) / span
     return np.uint16(data_norm * ((1 << bits) - 1))
@@ -36,7 +36,6 @@ def data_to_uint8s(value):
         packed = pack('I', value)
     else:
         raise ValueError("Value must be an integer within the range of uint32")
-
     # Unpack the bytes into four uint8 values
     return unpack('4B', packed)
 
