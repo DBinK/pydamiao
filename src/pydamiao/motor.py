@@ -5,7 +5,7 @@ from typing import TypeAlias
 import numpy as np
 from serial import Serial
 
-from pydamiao.enums import ControlType, DamiaoMotorType, MotorVariable
+from pydamiao.types import ControlType, DamiaoMotorType, MotorVariable, MotorLimits, MOTOR_LIMITS
 from pydamiao.utils import (
     data_to_uint8s,
     float_to_uint,
@@ -84,21 +84,6 @@ class MotorControl:
                 0, 0, 0, 0, 0, 0, 0, 0, 0x00], 
         dtype=np.uint8)  # fmt: off
 
-    Limit_Param = [
-        [12.5, 30, 10],  # 4310
-        [12.5, 50, 10],  # 4310_48V
-        [12.5, 8, 28],  # 4340
-        [12.5, 10, 28],  # 4340_48V
-        [12.5, 45, 20],  # 6006
-        [12.5, 45, 40],  # 8006
-        [12.5, 45, 54],  # 8009
-        [12.5, 25, 200],  # 10010L
-        [12.5, 20, 200],  # 10010
-        [12.5, 280, 1],  # H3510
-        [12.5, 45, 10],  # DMG62150
-        [12.5, 45, 10],  # DMH6220
-    ]
-
     def __init__(self, serial_device: Serial):
         """
         define MotorControl object 定义电机控制对象
@@ -131,9 +116,10 @@ class MotorControl:
         kp_uint = float_to_uint(kp, 0, 500, 12)
         kd_uint = float_to_uint(kd, 0, 5, 12)
         MotorType = DM_Motor.MotorType
-        Q_MAX = self.Limit_Param[MotorType][0]
-        DQ_MAX = self.Limit_Param[MotorType][1]
-        TAU_MAX = self.Limit_Param[MotorType][2]
+        limits = MOTOR_LIMITS[MotorType]
+        Q_MAX = limits.Q_MAX
+        DQ_MAX = limits.DQ_MAX
+        TAU_MAX = limits.TAU_MAX
         q_uint = float_to_uint(q, -Q_MAX, Q_MAX, 16)
         dq_uint = float_to_uint(dq, -DQ_MAX, DQ_MAX, 12)
         tau_uint = float_to_uint(tau, -TAU_MAX, TAU_MAX, 12)
@@ -172,7 +158,7 @@ class MotorControl:
         self.control_mit(DM_Motor, kp, kd, q, dq, tau)
         sleep(delay)
 
-    def control_pos_vel(self, Motor, P_desired: float, V_desired: float):
+    def control_pos_vel(self, Motor: Motor, P_desired: float, V_desired: float):
         """
         control the motor in position and velocity control mode 电机位置速度控制模式
         :param Motor: Motor object 电机对象
@@ -304,9 +290,10 @@ class MotorControl:
                     dq_uint = np.uint16((np.uint16(data[3]) << 4) | (data[4] >> 4))
                     tau_uint = np.uint16(((data[4] & 0xF) << 8) | data[5])
                     MotorType_recv = self.motors_map[CANID].MotorType
-                    Q_MAX = self.Limit_Param[MotorType_recv][0]
-                    DQ_MAX = self.Limit_Param[MotorType_recv][1]
-                    TAU_MAX = self.Limit_Param[MotorType_recv][2]
+                    limits = MOTOR_LIMITS[MotorType_recv]
+                    Q_MAX = limits.Q_MAX
+                    DQ_MAX = limits.DQ_MAX
+                    TAU_MAX = limits.TAU_MAX
                     recv_q = uint_to_float(q_uint, -Q_MAX, Q_MAX, 16)
                     recv_dq = uint_to_float(dq_uint, -DQ_MAX, DQ_MAX, 12)
                     recv_tau = uint_to_float(tau_uint, -TAU_MAX, TAU_MAX, 12)
@@ -318,9 +305,10 @@ class MotorControl:
                     dq_uint = np.uint16((np.uint16(data[3]) << 4) | (data[4] >> 4))
                     tau_uint = np.uint16(((data[4] & 0xF) << 8) | data[5])
                     MotorType_recv = self.motors_map[MasterID].MotorType
-                    Q_MAX = self.Limit_Param[MotorType_recv][0]
-                    DQ_MAX = self.Limit_Param[MotorType_recv][1]
-                    TAU_MAX = self.Limit_Param[MotorType_recv][2]
+                    limits = MOTOR_LIMITS[MotorType_recv]
+                    Q_MAX = limits.Q_MAX
+                    DQ_MAX = limits.DQ_MAX
+                    TAU_MAX = limits.TAU_MAX
                     recv_q = uint_to_float(q_uint, -Q_MAX, Q_MAX, 16)
                     recv_dq = uint_to_float(dq_uint, -DQ_MAX, DQ_MAX, 12)
                     recv_tau = uint_to_float(tau_uint, -TAU_MAX, TAU_MAX, 12)
@@ -481,9 +469,9 @@ class MotorControl:
         :param TMAX: 电机的TMAX
         :return:
         """
-        self.Limit_Param[Motor_Type][0] = PMAX
-        self.Limit_Param[Motor_Type][1] = VMAX
-        self.Limit_Param[Motor_Type][2] = TMAX
+        
+        # Note: Since MOTOR_LIMITS contains immutable NamedTuples, we need to replace the entire entry
+        MOTOR_LIMITS[Motor_Type] = MotorLimits(PMAX, VMAX, TMAX)
 
     def refresh_motor_status(self, Motor: Motor):
         """

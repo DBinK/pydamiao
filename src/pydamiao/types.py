@@ -24,7 +24,6 @@ class MotorLimits(NamedTuple):
     TAU_MAX: float # 力矩限制 (牛·米)
 
 # 电机限制参数 - 每个电机型号对应的 [Q_MAX, DQ_MAX, TAU_MAX]
-
 MOTOR_LIMITS = {
     DamiaoMotorType.DM4310: MotorLimits(12.5, 30, 10),
     DamiaoMotorType.DM4310_48V: MotorLimits(12.5, 50, 10),

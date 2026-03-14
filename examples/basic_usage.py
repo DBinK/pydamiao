@@ -2,12 +2,12 @@ import math
 import time
 
 import serial
-from pydamiao.enums import DamiaoMotorType, ControlType, MotorVariable
+from pydamiao.types import DamiaoMotorType, ControlType, MotorVariable
 from pydamiao.motor import Motor, MotorControl
 
 # 创建电机对象和串口对象
 motor1 = Motor(DamiaoMotorType.DM4310, 0x06, 0x12)
-motor2 = Motor(DamiaoMotorType.DM4310, 0x05, 0x12)
+motor2 = Motor(DamiaoMotorType.DM4310, 0x05, 0x18)
 serial_device = serial.Serial("COM3", 921600, timeout=0.5)
 motor_control = MotorControl(serial_device)
 motor_control.add_motor(motor1)
@@ -27,6 +27,7 @@ print("PMAX:", motor_control.read_motor_param(motor1, MotorVariable.PMAX))
 print("MST_ID:", motor_control.read_motor_param(motor1, MotorVariable.MST_ID))
 print("VMAX:", motor_control.read_motor_param(motor1, MotorVariable.VMAX))
 print("TMAX:", motor_control.read_motor_param(motor1, MotorVariable.TMAX))
+
 print("Motor2:")
 print("PMAX:", motor_control.read_motor_param(motor2, MotorVariable.PMAX))
 print("MST_ID:", motor_control.read_motor_param(motor2, MotorVariable.MST_ID))
@@ -51,7 +52,8 @@ while i < 10000:
     # print("Motor1:", "POS:", motor1.get_position(), "VEL:", motor1.get_velocity(), "TORQUE:", motor1.get_torque())
     # motor_control.control_mit(motor2, 35, 0.1, 8 * q, 0, 0)
 
-    motor_control.control_vel(motor2, 8 * q)
+    # motor_control.control_vel(motor2, 8 * q)
+    motor_control.control_pos_vel(motor1, q * 3, 3)
     # print("Motor2:", "POS:", motor2.get_position(), "VEL:", motor2.get_velocity(), "TORQUE:", motor2.get_torque())
     # print(motor1.get_torque())
     # print(motor2.get_torque())

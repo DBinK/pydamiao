@@ -2,11 +2,11 @@ import math
 import time
 
 import serial
-from pydamiao.enums import DamiaoMotorType, ControlType, MotorVariable
+from pydamiao.types import DamiaoMotorType, ControlType, MotorVariable
 from pydamiao.motor import Motor, MotorControl
 
 # 创建电机对象和串口对象
-motor1 = Motor(DamiaoMotorType.DM4310, 0x06, 0x12)
+motor1 = Motor(DamiaoMotorType.DM4310, 0x05, 0x12)
 serial_device = serial.Serial("COM3", 921600, timeout=0.5)
 motor_control = MotorControl(serial_device)
 motor_control.add_motor(motor1)
