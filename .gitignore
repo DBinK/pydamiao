@@ -1,3 +1,6 @@
+# Project-specific gitignore
+.litho
+
 # uv
 .python-version
 
