@@ -1,74 +1,56 @@
 # src/pydamiao/motor.py
+
+from dataclasses import dataclass, field
 from time import sleep
 
 import numpy as np
 from serial import Serial
 
-from pydamiao.types import Hex, ControlMode, MotorType, MotorReg, MotorLimits, MOTOR_LIMITS, CanResp
+from pydamiao.types import (
+    MOTOR_LIMITS,
+    CanResp,
+    ControlMode,
+    Hex,
+    MotorLimits,
+    MotorReg,
+    MotorType,
+)
 from pydamiao.utils import (
-    int_to_uint8s,
     float_to_uint,
     float_to_uint8s,
+    int_to_uint8s,
     uint8s_to_float,
     uint8s_to_uint32,
     uint_to_float,
 )
 
+
+@dataclass
 class Motor:
     """电机类数据容器，用于定义电机对象"""
-
-    def __init__(self, motor_type: MotorType, slave_id: Hex, master_id: Hex):
-        """初始化电机对象
-        
-        Args:
-            motor_type: 电机类型
-            slave_id: CANID 电机ID
-            master_id: 主机ID，建议不要设为0
-        """
-        self.motor_type = motor_type
-        self.slave_id = slave_id
-        self.master_id = master_id
-
-        # 电机状态反馈
-        self.pos = float(0)
-        self.vel = float(0)
-        self.torque = float(0)
-
-        self.enabled = False  
-        self.control_mode: ControlMode | None = None  
-        self.param_cache = {}
-
+    # 电机参数
+    motor_type: MotorType
+    slave_id: Hex
+    master_id: Hex
+    
+    # 电机状态
+    pos: float = 0.0
+    vel: float = 0.0
+    torque: float = 0.0
+    
+    enabled: bool = False
+    control_mode: ControlMode | None = None
+    param_cache: dict[MotorReg, int | float] = field(default_factory=dict)
+    
     def update_from_controller(self, pos: float, vel: float, torque: float):
-        """从控制器被动接受更新数据"""
+        """从 Controller 被动接受更新数据"""
         self.pos = pos
         self.vel = vel
         self.torque = torque
 
-    def get_position(self):
-        """获取电机位置"""
-        return self.pos
-
-    def get_velocity(self):
-        """获取电机速度"""
-        return self.vel
-
-    def get_torque(self):
-        """获取电机力矩"""
-        return self.torque
-
-    def get_param(self, reg_id: MotorReg):
-        """获取电机内部参数，需要提前读取
-        
-        Args:
-            reg_id: 电机寄存器中的值
-            
-        Returns:
-            电机寄存器中的值
-        """
-        if reg_id in self.param_cache:
-            return self.param_cache[reg_id]
-        else:
-            return None
+    def get_param(self, reg_id: MotorReg) -> float | int | None:
+        """获取电机内部参数，需要在 Controller 提前读取"""
+        return self.param_cache.get(reg_id)
 
 
 class MotorController:
@@ -526,7 +508,7 @@ class MotorController:
                 else:
                     master_id = slave_id
 
-            reg_id = data[3]
+            reg_id = MotorReg(data[3])
 
             # 读取参数得到的数据
             if MotorReg.is_int_type(reg_id):
