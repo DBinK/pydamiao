@@ -31,18 +31,20 @@ controller.disable(motor1)
 
 # 控制电机运动示例
 i = 0
-while i < 1000:
+while i < 10:
     q = math.sin(time.time())
     i += 1
     # motor_control.control_pos_force(motor1, 10, 1000, 100)
     # motor_control.control_vel(motor1, q * 5)
     # motor_control.control_pos_vel(motor1, q * 8, 3)
     controller.refresh_motor_status(motor1)
-    print("Motor1:", "POS:", motor1.get_position(), "VEL:", motor1.get_velocity(), "TORQUE:", motor1.get_torque())
+    print("Motor1:", "POS:", motor1.pos, "VEL:", motor1.vel, "TORQUE:", motor1.torque)
     # motor_control.control_mit(motor2, 35, 0.1, 8 * q, 0, 0)
 
     time.sleep(0.01)
     # motor_control.control(motor3, 50, 0.3, q, 0, 0)
 
 # 语句结束关闭串口
+from rich import print
+print(motor1)
 serial_device.close()

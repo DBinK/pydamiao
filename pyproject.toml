@@ -24,6 +24,7 @@ Repository = "https://github.com/DBinK/pydamiao"
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "rich>=14.3.3"
 ]
 
 [tool.pytest.ini_options]
