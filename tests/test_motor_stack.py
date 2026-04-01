@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from pydamiao import ControlMode, Motor, MotorManager, MotorReg, MotorType, SerialBus
+from pydamiao import ControlMode, Motor, MotorManager, MotorReg, MotorType, Result, SerialBus
 from pydamiao.protocol import DamiaoProtocol
 from pydamiao.types import CanResp, MOTOR_LIMITS
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s
@@ -152,6 +152,28 @@ def test_motor_read_and_write_param_use_request_response_matching():
         bus.close()
 
 
+def test_control_commands_auto_switch_mode_before_sending():
+    fake_serial = FakeSerial()
+    bus = SerialBus(fake_serial, timeout=0.01)
+    motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16)
+
+    try:
+        mode_frame = make_rx_frame(
+            CanResp.RECEIVE_SUCCESS,
+            0x16,
+            make_param_payload(0x06, 0x55, MotorReg.CTRL_MODE, int(ControlMode.POS_VEL)),
+        )
+        feed_later(fake_serial, mode_frame)
+        result = motor.set_pos_vel(1.0, 2.0)
+
+        assert result.ok
+        assert motor.control_mode == ControlMode.POS_VEL
+        assert fake_serial.writes[0] == DamiaoProtocol.encode_write_param(0x06, MotorReg.CTRL_MODE, int(ControlMode.POS_VEL))
+        assert fake_serial.writes[1] == DamiaoProtocol.encode_pos_vel_control(0x06, 1.0, 2.0)
+    finally:
+        bus.close()
+
+
 def test_motor_timeout_and_unsupported_paths_return_result_errors():
     fake_serial = FakeSerial()
     bus = SerialBus(fake_serial, timeout=0.01)
@@ -167,6 +189,19 @@ def test_motor_timeout_and_unsupported_paths_return_result_errors():
         assert unsupported_result.code == "unsupported"
     finally:
         bus.close()
+
+
+def test_result_feels_pythonic_to_use():
+    success = Result(123)
+    failure = Result(error="boom", code="bad")
+
+    assert success.ok
+    assert success.expect() == 123
+
+    assert not failure
+    assert not failure.ok
+    with pytest.raises(RuntimeError, match="boom"):
+        failure.expect()
 
 
 def test_motor_manager_supports_direct_registration_and_batch_commands():

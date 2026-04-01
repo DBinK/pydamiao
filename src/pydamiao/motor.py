@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
 from time import time
 
 from pydamiao.bus import SerialBus
@@ -10,22 +9,26 @@ from pydamiao.result import Result
 from pydamiao.types import ControlMode, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
 
 
-@dataclass(slots=True)
 class Motor:
-    bus: SerialBus
-    motor_type: MotorType
-    slave_id: int
-    master_id: int = 0
-    pos: float = field(init=False, default=0.0)
-    vel: float = field(init=False, default=0.0)
-    torque: float = field(init=False, default=0.0)
-    enabled: bool = field(init=False, default=False)
-    control_mode: ControlMode | None = field(init=False, default=None)
-    param_cache: dict[int, float | int] = field(init=False, default_factory=dict)
-    last_update_time: float | None = field(init=False, default=None)
-    _state_lock: threading.RLock = field(init=False, repr=False, compare=False)
+    def __init__(
+        self,
+        bus: SerialBus,
+        motor_type: MotorType,
+        slave_id: int,
+        master_id: int = 0,
+    ) -> None:
+        self.bus = bus
+        self.motor_type = motor_type
+        self.slave_id = slave_id
+        self.master_id = master_id
 
-    def __post_init__(self) -> None:
+        self.pos = 0.0
+        self.vel = 0.0
+        self.torque = 0.0
+        self.enabled = False
+        self.control_mode: ControlMode | None = None
+        self.param_cache: dict[int, float | int] = {}
+        self.last_update_time: float | None = None
         self._state_lock = threading.RLock()
         self.bus.register_motor(self)
 
@@ -63,29 +66,29 @@ class Motor:
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.ENABLE_CMD))
         with self._state_lock:
             self.enabled = True
-        return Result.success()
+        return Result()
 
     def disable(self) -> Result[None]:
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.DISABLE_CMD))
         with self._state_lock:
             self.enabled = False
-        return Result.success()
+        return Result()
 
     def set_zero(self) -> Result[None]:
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.SET_ZERO_CMD))
-        return Result.success()
+        return Result()
 
     def clear_error(self) -> Result[None]:
-        return Result.failure("clear_error is not supported by the current protocol implementation", code="unsupported")
+        return Result(error="clear_error is not supported by the current protocol implementation", code="unsupported")
 
     def set_mode(self, mode: ControlMode, timeout: float = 1.0) -> Result[ControlMode]:
         result = self.write_param(MotorReg.CTRL_MODE, int(mode), timeout=timeout)
-        if not result.ok:
-            return Result.failure(result.error or "Failed to switch mode", code=result.code or "error")
+        if not result:
+            return Result(error=result.error or "Failed to switch mode", code=result.code or "error")
 
         with self._state_lock:
             self.control_mode = mode
-        return Result.success(mode)
+        return Result(mode)
 
     def set_mit(
         self,
@@ -94,7 +97,11 @@ class Motor:
         kp: float,
         kd: float,
         torque: float,
+        auto_switch_mode: bool = True,
     ) -> Result[None]:
+        mode_result = self._prepare_control_mode(ControlMode.MIT, auto_switch_mode)
+        if not mode_result:
+            return mode_result
         self.bus.send(
             DamiaoProtocol.encode_mit_control(
                 self.slave_id,
@@ -106,19 +113,34 @@ class Motor:
                 torque=torque,
             )
         )
-        return Result.success()
+        return Result()
 
-    def set_pos_vel(self, pos: float, vel: float) -> Result[None]:
+    def set_pos_vel(self, pos: float, vel: float, auto_switch_mode: bool = True) -> Result[None]:
+        mode_result = self._prepare_control_mode(ControlMode.POS_VEL, auto_switch_mode)
+        if not mode_result:
+            return mode_result
         self.bus.send(DamiaoProtocol.encode_pos_vel_control(self.slave_id, pos, vel))
-        return Result.success()
+        return Result()
 
-    def set_velocity(self, vel: float) -> Result[None]:
+    def set_velocity(self, vel: float, auto_switch_mode: bool = True) -> Result[None]:
+        mode_result = self._prepare_control_mode(ControlMode.VEL, auto_switch_mode)
+        if not mode_result:
+            return mode_result
         self.bus.send(DamiaoProtocol.encode_velocity_control(self.slave_id, vel))
-        return Result.success()
+        return Result()
 
-    def set_pos_force(self, pos: float, vel: float, current: float) -> Result[None]:
+    def set_pos_force(
+        self,
+        pos: float,
+        vel: float,
+        current: float,
+        auto_switch_mode: bool = True,
+    ) -> Result[None]:
+        mode_result = self._prepare_control_mode(ControlMode.TORQUE_POS, auto_switch_mode)
+        if not mode_result:
+            return mode_result
         self.bus.send(DamiaoProtocol.encode_pos_force_control(self.slave_id, pos, vel, current))
-        return Result.success()
+        return Result()
 
     def refresh_state(self, timeout: float = 0.5) -> Result[MotorState]:
         result = self.bus.request(
@@ -126,9 +148,9 @@ class Motor:
             matcher=lambda message: message.kind == "status" and self._matches_message(message),
             timeout=timeout,
         )
-        if not result.ok:
-            return Result.failure(result.error or "Failed to refresh state", code=result.code or "error")
-        return Result.success(self.get_state())
+        if not result:
+            return Result(error=result.error or "Failed to refresh state", code=result.code or "error")
+        return Result(self.get_state())
 
     def read_param(self, reg_id: MotorReg, timeout: float = 1.0) -> Result[float | int]:
         result = self.bus.request(
@@ -140,11 +162,11 @@ class Motor:
             ),
             timeout=timeout,
         )
-        if not result.ok:
-            return Result.failure(result.error or "Failed to read motor parameter", code=result.code or "error")
+        if not result:
+            return Result(error=result.error or "Failed to read motor parameter", code=result.code or "error")
         if result.value is None:
-            return Result.failure("Motor did not return a parameter value", code="invalid_response")
-        return Result.success(result.value.value)
+            return Result(error="Motor did not return a parameter value", code="invalid_response")
+        return Result(result.value.value)
 
     def write_param(self, reg_id: MotorReg, value: float | int, timeout: float = 1.0) -> Result[float | int]:
         result = self.bus.request(
@@ -156,30 +178,41 @@ class Motor:
             ),
             timeout=timeout,
         )
-        if not result.ok:
-            return Result.failure(result.error or "Failed to write motor parameter", code=result.code or "error")
+        if not result:
+            return Result(error=result.error or "Failed to write motor parameter", code=result.code or "error")
         if result.value is None:
-            return Result.failure("Motor did not return a parameter value", code="invalid_response")
+            return Result(error="Motor did not return a parameter value", code="invalid_response")
 
         returned = result.value.value
         if returned is None:
-            return Result.failure("Motor did not return a parameter value", code="invalid_response")
+            return Result(error="Motor did not return a parameter value", code="invalid_response")
 
         if isinstance(returned, float):
             if abs(returned - float(value)) > 0.1:
-                return Result.failure("Motor parameter verification failed", code="mismatch")
+                return Result(error="Motor parameter verification failed", code="mismatch")
         elif returned != int(value):
-            return Result.failure("Motor parameter verification failed", code="mismatch")
+            return Result(error="Motor parameter verification failed", code="mismatch")
 
         if int(reg_id) == int(MotorReg.CTRL_MODE):
             with self._state_lock:
                 self.control_mode = ControlMode(int(returned))
-        return Result.success(returned)
+        return Result(returned)
 
     def save_params(self) -> Result[None]:
         self.disable()
         self.bus.send(DamiaoProtocol.encode_save_params(self.slave_id))
-        return Result.success()
+        return Result()
+
+    def _prepare_control_mode(self, target_mode: ControlMode, auto_switch_mode: bool) -> Result[None]:
+        if self.control_mode == target_mode:
+            return Result()
+        if not auto_switch_mode:
+            return Result(error=f"Motor is not in {target_mode.name} mode", code="mode_mismatch")
+
+        result = self.set_mode(target_mode)
+        if not result:
+            return Result(error=result.error or "Failed to switch control mode", code=result.code or "error")
+        return Result()
 
     def _matches_message(self, message: ParsedMessage) -> bool:
         if self.slave_id in message.route_ids:

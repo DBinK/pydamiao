@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from queue import Empty, Queue
 import threading
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
 from serial import Serial, SerialException
@@ -12,13 +12,6 @@ from pydamiao.result import Result
 
 if TYPE_CHECKING:
     from pydamiao.motor import Motor
-
-
-@dataclass(slots=True)
-class _PendingRequest:
-    matcher: Callable[[ParsedMessage], bool]
-    event: threading.Event = field(default_factory=threading.Event)
-    response: ParsedMessage | None = None
 
 
 class SerialBus:
@@ -40,7 +33,7 @@ class SerialBus:
         self._waiters_lock = threading.Lock()
         self._motors_lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._waiters: list[_PendingRequest] = []
+        self._waiters: list[tuple[Callable[[ParsedMessage], bool], Queue[ParsedMessage | None]]] = []
         self._motors_by_alias: dict[int, Motor] = {}
         self._rx_buffer = b""
         self._receiver_error: BaseException | None = None
@@ -63,7 +56,7 @@ class SerialBus:
             raise SerialBusError(f"Failed to open serial port {port!r}: {exc}") from exc
 
     def start(self) -> None:
-        self._raise_if_receiver_failed()
+        self._check_receiver()
         if self._receiver_thread and self._receiver_thread.is_alive():
             return
 
@@ -95,7 +88,7 @@ class SerialBus:
             return self._motors_by_alias.get(motor_id)
 
     def send(self, data: bytes) -> None:
-        self._raise_if_receiver_failed()
+        self._check_receiver()
         if not self.serial.is_open:
             raise SerialPortClosedError("Serial port is closed")
         with self._send_lock:
@@ -110,23 +103,27 @@ class SerialBus:
         matcher: Callable[[ParsedMessage], bool],
         timeout: float = 0.5,
     ) -> Result[ParsedMessage]:
-        pending = _PendingRequest(matcher=matcher)
+        response_queue: Queue[ParsedMessage | None] = Queue(maxsize=1)
         with self._waiters_lock:
-            self._waiters.append(pending)
+            self._waiters.append((matcher, response_queue))
 
         try:
             self.send(data)
-            if not pending.event.wait(timeout):
-                self._raise_if_receiver_failed()
-                return Result.failure("Timed out waiting for motor response", code="timeout")
-            self._raise_if_receiver_failed()
-            if pending.response is None:
-                return Result.failure("Receiver stopped before a matching response arrived", code="interrupted")
-            return Result.success(pending.response)
+            try:
+                response = response_queue.get(timeout=timeout)
+            except Empty:
+                self._check_receiver()
+                return Result(error="Timed out waiting for motor response", code="timeout")
+
+            self._check_receiver()
+            if response is None:
+                return Result(error="Receiver stopped before a matching response arrived", code="interrupted")
+            return Result(response)
         finally:
             with self._waiters_lock:
-                if pending in self._waiters:
-                    self._waiters.remove(pending)
+                waiter = (matcher, response_queue)
+                if waiter in self._waiters:
+                    self._waiters.remove(waiter)
 
     def _receiver_loop(self) -> None:
         try:
@@ -142,14 +139,10 @@ class SerialBus:
                     self._dispatch_message(message)
         except ValueError as exc:
             self._receiver_error = ProtocolError(str(exc))
-            with self._waiters_lock:
-                for pending in self._waiters:
-                    pending.event.set()
+            self._notify_waiters_of_failure()
         except Exception as exc:
             self._receiver_error = exc
-            with self._waiters_lock:
-                for pending in self._waiters:
-                    pending.event.set()
+            self._notify_waiters_of_failure()
 
     def _dispatch_message(self, message: ParsedMessage) -> None:
         motor = None
@@ -162,13 +155,16 @@ class SerialBus:
             motor._handle_message(message)
 
         with self._waiters_lock:
-            for pending in list(self._waiters):
-                if pending.event.is_set():
-                    continue
-                if pending.matcher(message):
-                    pending.response = message
-                    pending.event.set()
+            for matcher, response_queue in list(self._waiters):
+                if matcher(message) and response_queue.empty():
+                    response_queue.put_nowait(message)
 
-    def _raise_if_receiver_failed(self) -> None:
+    def _notify_waiters_of_failure(self) -> None:
+        with self._waiters_lock:
+            for _, response_queue in self._waiters:
+                if response_queue.empty():
+                    response_queue.put_nowait(None)
+
+    def _check_receiver(self) -> None:
         if self._receiver_error is not None:
             raise ReceiverThreadError("Serial receiver thread has stopped unexpectedly") from self._receiver_error

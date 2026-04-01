@@ -8,23 +8,18 @@ T = TypeVar("T")
 
 @dataclass(slots=True)
 class Result(Generic[T]):
-    ok: bool
     value: T | None = None
     error: str | None = None
     code: str | None = None
 
-    @classmethod
-    def success(cls, value: T | None = None) -> "Result[T]":
-        return cls(ok=True, value=value)
+    @property
+    def ok(self) -> bool:
+        return self.error is None
 
-    @classmethod
-    def failure(cls, error: str, code: str = "error") -> "Result[T]":
-        return cls(ok=False, error=error, code=code)
-
-    def unwrap(self) -> T:
-        if not self.ok:
-            raise ValueError(self.error or "Result is not ok")
+    def expect(self, message: str | None = None) -> T:
+        if self.error is not None:
+            raise RuntimeError(message or self.error)
         return self.value
 
     def __bool__(self) -> bool:
-        return self.ok
+        return self.error is None
