@@ -15,7 +15,7 @@ from pydamiao.utils import (
 )
 
 class Motor:
-    """电机类，用于定义电机对象"""
+    """电机类数据容器，用于定义电机对象"""
 
     def __init__(self, motor_type: MotorType, slave_id: Hex, master_id: Hex):
         """初始化电机对象
@@ -25,66 +25,45 @@ class Motor:
             slave_id: CANID 电机ID
             master_id: 主机ID，建议不要设为0
         """
-        self.pos_cmd = float(0)
-        self.vel_cmd = float(0)
-        self.torque_cmd = float(0)
+        self.motor_type = motor_type
+        self.slave_id = slave_id
+        self.master_id = master_id
 
+        # 电机状态反馈
         self.pos = float(0)
         self.vel = float(0)
         self.torque = float(0)
 
-        self.slave_id = slave_id
-        self.master_id = master_id
-
-        self.motor_type = motor_type
-        self.is_enable = False
-        self.control_mode = ControlMode.MIT
+        self.enabled = False  
+        self.control_mode: ControlMode | None = None  
         self.param_cache = {}
 
     def update_from_controller(self, pos: float, vel: float, torque: float):
-        """从控制器被动接受更新数据
-        
-        Args:
-            pos: 位置
-            vel: 速度
-            torque: 力矩
-        """
+        """从控制器被动接受更新数据"""
         self.pos = pos
         self.vel = vel
         self.torque = torque
 
     def get_position(self):
-        """获取电机位置
-        
-        Returns:
-            电机位置
-        """
+        """获取电机位置"""
         return self.pos
 
     def get_velocity(self):
-        """获取电机速度
-        
-        Returns:
-            电机速度
-        """
+        """获取电机速度"""
         return self.vel
 
     def get_torque(self):
-        """获取电机力矩
-        
-        Returns:
-            电机力矩
-        """
+        """获取电机力矩"""
         return self.torque
 
     def get_param(self, reg_id: MotorReg):
         """获取电机内部参数，需要提前读取
         
         Args:
-            reg_id: 电机参数
+            reg_id: 电机寄存器中的值
             
         Returns:
-            电机参数
+            电机寄存器中的值
         """
         if reg_id in self.param_cache:
             return self.param_cache[reg_id]
@@ -161,6 +140,7 @@ class MotorController:
         self.__basic_cmd(motor, np.uint8(0xFC))
         sleep(0.1)
         self.recv()  # 接收来自串口的数据
+        motor.enabled = True  # 更新电机使能状态
 
     def disable(self, motor: Motor):
         """失能电机
@@ -171,6 +151,7 @@ class MotorController:
         self.__basic_cmd(motor, np.uint8(0xFD))
         sleep(0.1)
         self.recv()  # 接收来自串口的数据
+        motor.enabled = False  # 更新电机使能状态
 
     def set_zero_position(self, motor: Motor):
         """设置电机零位
@@ -340,12 +321,12 @@ class MotorController:
         
         Args:
             motor: 电机对象
-            reg_id: 电机参数
+            reg_id: 电机寄存器参数
             
         Returns:
-            电机参数的值
+            电机寄存器参数的值
         """
-        max_retries = 20
+        max_retries = 20       # 最大重试次数
         retry_interval = 0.05  # 重试间隔
         self.__read_motor_param(motor, reg_id)
         for _ in range(max_retries):
@@ -357,12 +338,12 @@ class MotorController:
         return None
 
     def change_motor_param(self, motor: Motor, reg_id: MotorReg, data: float | int):
-        """改变电机参数, 仅当前生效, 需要保持参数请用 save_motor_param()
+        """改变电机寄存器参数的值, 仅当前生效, 需要保持参数请用 save_motor_param()
         
         Args:
             motor: 电机对象
-            reg_id: 电机参数
-            data: 电机参数的值
+            reg_id: 电机寄存器参数
+            data: 电机寄存器参数的值
             
         Returns:
             True表示成功，False表示失败
@@ -388,7 +369,7 @@ class MotorController:
         return False
 
     def save_motor_param(self, motor: Motor):
-        """保存所有电机参数到 flash
+        """保存所有参数到 flash
         
         Args:
             motor: 电机对象
@@ -450,6 +431,7 @@ class MotorController:
                         )
                         < 0.1
                     ):
+                        motor.control_mode = control_mode  # 更新控制模式
                         return True
                     else:
                         return False
@@ -569,7 +551,7 @@ class MotorController:
         self.__send_data(motor.slave_id, tx_buf)
 
     def __read_motor_param(self, motor: Motor, reg_id: MotorReg):
-        """读取电机参数"""
+        """读取电机寄存器中的值"""
         can_id_l = motor.slave_id & 0xFF  # id 低8位
         can_id_h = (motor.slave_id >> 8) & 0xFF  # id 高8位
         tx_buf = np.array(
@@ -588,7 +570,7 @@ class MotorController:
         self.__send_data(0x7FF, tx_buf)
 
     def __write_motor_param(self, motor: Motor, reg_id: MotorReg, data: float | int):
-        """ 写入电机参数 """
+        """ 写入电机寄存器中的值 """
         can_id_l = motor.slave_id & 0xFF  # id 低8位
         can_id_h = (motor.slave_id >> 8) & 0xFF  # id 高8位
         tx_buf = np.array(
