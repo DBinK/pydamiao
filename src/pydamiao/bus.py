@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 
 class SerialPortLike(Protocol):
+    """`SerialBus` 依赖的最小串口接口。"""
+
     @property
     def is_open(self) -> bool: ...
 
@@ -25,6 +27,12 @@ class SerialPortLike(Protocol):
 
 
 class SerialBus:
+    """管理共享串口连接和后台接收循环。
+
+    总线层负责线程安全发送、后台拆帧，以及为 ``Motor`` 这类高层 API
+    提供 request-response 匹配能力。
+    """
+
     def __init__(
         self,
         port: str | SerialPortLike,
@@ -33,6 +41,15 @@ class SerialBus:
         read_size: int = 64,
         auto_start: bool = True,
     ) -> None:
+        """初始化共享串口总线。
+
+        Args:
+            port: 串口名，或已经打开的类串口对象。
+            baudrate: 通过串口名打开时使用的波特率。
+            timeout: 底层串口对象使用的读超时。
+            read_size: 接收线程每次读取的最大字节数。
+            auto_start: 是否在初始化后立即启动后台接收线程。
+        """
         self.serial = self._open_serial(port, baudrate=baudrate, timeout=timeout)
         self.baudrate = baudrate
         self.timeout = timeout
@@ -66,6 +83,7 @@ class SerialBus:
             raise SerialBusError(f"Failed to open serial port {port!r}: {exc}") from exc
 
     def start(self) -> None:
+        """启动后台接收线程；如果已经启动则直接返回。"""
         self._check_receiver()
         if self._receiver_thread and self._receiver_thread.is_alive():
             return
@@ -79,6 +97,7 @@ class SerialBus:
         self._receiver_thread.start()
 
     def close(self) -> None:
+        """停止接收线程并关闭串口。"""
         self._stop_event.set()
         if self._receiver_thread and self._receiver_thread.is_alive():
             self._receiver_thread.join(timeout=max(self.timeout * 5, 0.1))
@@ -86,6 +105,7 @@ class SerialBus:
             self.serial.close()
 
     def register_motor(self, motor: "Motor") -> None:
+        """注册电机对象，使接收到的帧可以按 id 路由。"""
         with self._motors_lock:
             for alias_id in motor.alias_ids:
                 owner = self._motors_by_alias.get(alias_id)
@@ -94,10 +114,21 @@ class SerialBus:
                 self._motors_by_alias[alias_id] = motor
 
     def get_motor(self, motor_id: int) -> "Motor | None":
+        """按 slave id 或 master id 返回已注册电机。"""
         with self._motors_lock:
             return self._motors_by_alias.get(motor_id)
 
     def send(self, data: bytes) -> None:
+        """在共享串口链路上发送原始字节。
+
+        Args:
+            data: 已经编码完成的桥接帧。
+
+        Raises:
+            SerialPortClosedError: 串口未打开时抛出。
+            SerialBusError: 底层写入失败时抛出。
+            ReceiverThreadError: 接收线程已经失败时抛出。
+        """
         self._check_receiver()
         if not self.serial.is_open:
             raise SerialPortClosedError("Serial port is closed")
@@ -113,6 +144,16 @@ class SerialBus:
         matcher: Callable[[ParsedMessage], bool],
         timeout: float = 0.5,
     ) -> Result[ParsedMessage]:
+        """发送请求并等待第一条匹配的响应。
+
+        Args:
+            data: 已编码完成的请求帧。
+            matcher: 用于匹配响应消息的判定函数。
+            timeout: 等待匹配响应的最大秒数。
+
+        Returns:
+            Result[ParsedMessage]: 成功时返回匹配到的响应，否则返回超时或中断错误。
+        """
         response_queue: Queue[ParsedMessage | None] = Queue(maxsize=1)
         with self._waiters_lock:
             self._waiters.append((matcher, response_queue))
@@ -170,6 +211,7 @@ class SerialBus:
                     response_queue.put_nowait(message)
 
     def _notify_waiters_of_failure(self) -> None:
+        # 唤醒所有等待中的请求，让它们把接收线程故障显式返回给上层。
         with self._waiters_lock:
             for _, response_queue in self._waiters:
                 if response_queue.empty():

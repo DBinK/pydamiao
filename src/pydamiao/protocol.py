@@ -11,6 +11,8 @@ from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s, uint8s
 
 @dataclass(slots=True, frozen=True)
 class ParsedMessage:
+    """表示一帧从串口桥接层解码后的消息。"""
+
     kind: str
     can_resp: CanResp
     can_id: Hex
@@ -22,6 +24,8 @@ class ParsedMessage:
 
 
 class DamiaoProtocol:
+    """负责编码发送帧和解码接收桥接包。"""
+
     BRIDGE_TX_HEADER = bytes([0x55, 0xAA, 0x1E, 0x03])
     BRIDGE_TX_SEND_COUNT = bytes([0x01, 0x00, 0x00, 0x00])
     BRIDGE_TX_INTERVAL = bytes([0x0A, 0x00, 0x00, 0x00])
@@ -43,6 +47,15 @@ class DamiaoProtocol:
 
     @classmethod
     def build_bridge_frame(cls, can_id: Hex, payload: bytes) -> bytes:
+        """把 8 字节 CAN payload 封装成完整桥接帧。
+
+        Args:
+            can_id: 要写入桥接包的目标 CAN id。
+            payload: 8 字节 CAN payload。
+
+        Returns:
+            bytes: 编码完成的串口桥接帧。
+        """
         if len(payload) != 8:
             raise ValueError("CAN payload must be exactly 8 bytes")
 
@@ -61,6 +74,7 @@ class DamiaoProtocol:
 
     @classmethod
     def encode_basic_command(cls, motor_id: Hex, command: int) -> bytes:
+        """编码使能、失能、设零点这类基础命令。"""
         payload = bytes([0xFF] * 7 + [command])
         return cls.build_bridge_frame(motor_id, payload)
 
@@ -75,6 +89,7 @@ class DamiaoProtocol:
         vel: float,
         torque: float,
     ) -> bytes:
+        """编码 MIT 控制命令。"""
         kp_uint = float_to_uint(kp, 0, 500, 12)
         kd_uint = float_to_uint(kd, 0, 5, 12)
         pos_uint = float_to_uint(pos, -limits.POS_MAX, limits.POS_MAX, 16)
@@ -97,16 +112,19 @@ class DamiaoProtocol:
 
     @classmethod
     def encode_pos_vel_control(cls, motor_id: Hex, pos: float, vel: float) -> bytes:
+        """编码位置速度控制命令。"""
         payload = bytes(float_to_uint8s(pos) + float_to_uint8s(vel))
         return cls.build_bridge_frame(cls.POS_VEL_BASE_ID + motor_id, payload)
 
     @classmethod
     def encode_velocity_control(cls, motor_id: Hex, vel: float) -> bytes:
+        """编码纯速度控制命令。"""
         payload = bytes(float_to_uint8s(vel) + (0, 0, 0, 0))
         return cls.build_bridge_frame(cls.VEL_BASE_ID + motor_id, payload)
 
     @classmethod
     def encode_pos_force_control(cls, motor_id: Hex, pos: float, vel: float, current: float) -> bytes:
+        """编码力位混合控制命令。"""
         vel_uint = np.uint16(vel)
         current_uint = np.uint16(current)
         payload = bytes(
@@ -122,16 +140,19 @@ class DamiaoProtocol:
 
     @classmethod
     def encode_refresh_state(cls, slave_id: Hex) -> bytes:
+        """编码状态刷新请求。"""
         payload = bytes([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00])
         return cls.build_bridge_frame(cls.QUERY_ID, payload)
 
     @classmethod
     def encode_read_param(cls, slave_id: Hex, reg_id: MotorReg) -> bytes:
+        """编码寄存器读取请求。"""
         payload = bytes([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0x33, int(reg_id), 0x00, 0x00, 0x00, 0x00])
         return cls.build_bridge_frame(cls.QUERY_ID, payload)
 
     @classmethod
     def encode_write_param(cls, slave_id: Hex, reg_id: MotorReg, value: float | int) -> bytes:
+        """编码寄存器写入请求。"""
         payload = bytearray([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0x55, int(reg_id), 0x00, 0x00, 0x00, 0x00])
         if MotorReg.is_int_type(int(reg_id)):
             payload[4:8] = bytes(int_to_uint8s(int(value)))
@@ -141,11 +162,13 @@ class DamiaoProtocol:
 
     @classmethod
     def encode_save_params(cls, slave_id: Hex) -> bytes:
+        """编码保存参数到 flash 的请求。"""
         payload = bytes([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0xAA, 0x00, 0x00, 0x00, 0x00, 0x00])
         return cls.build_bridge_frame(cls.QUERY_ID, payload)
 
     @classmethod
     def extract_frames(cls, buffer: bytes) -> tuple[list[bytes], bytes]:
+        """从字节缓冲区中提取所有完整桥接帧。"""
         frames: list[bytes] = []
         frame_length = cls.RX_FRAME_LENGTH
         start = 0
@@ -162,11 +185,13 @@ class DamiaoProtocol:
         if frames:
             return frames, buffer[start:]
 
+        # 只保留仍有机会拼成下一帧开头的尾部字节，避免缓冲区无限增长。
         keep = max(frame_length - 1, 0)
         return frames, buffer[-keep:]
 
     @classmethod
     def parse_frame(cls, frame: bytes) -> ParsedMessage:
+        """解析单个 16 字节接收桥接帧。"""
         if len(frame) != cls.RX_FRAME_LENGTH:
             raise ValueError("Unexpected rx frame length")
         if frame[0] != cls.RX_FRAME_HEADER or frame[-1] != cls.RX_FRAME_TAIL:
@@ -215,6 +240,7 @@ class DamiaoProtocol:
 
     @classmethod
     def decode_status(cls, data: bytes, limits: MotorLimits) -> tuple[float, float, float]:
+        """从状态 payload 中解码位置、速度和力矩。"""
         pos_uint = np.uint16((np.uint16(data[1]) << 8) | data[2])
         vel_uint = np.uint16((np.uint16(data[3]) << 4) | (data[4] >> 4))
         torque_uint = np.uint16(((data[4] & 0x0F) << 8) | data[5])
