@@ -2,7 +2,7 @@ import math
 import time
 
 import serial
-from pydamiao.types import MotorType, ControlMode, MotorParam
+from pydamiao.types import MotorType, ControlMode, MotorReg
 from pydamiao.motor import Motor, MotorControl
 
 # 创建电机对象和串口对象
@@ -15,14 +15,14 @@ motor_control.add_motor(motor1)
 if motor_control.switch_control_mode(motor1, ControlMode.POS_VEL):
     print("switch POS_VEL success")
 
-print("sub_ver:", motor_control.read_motor_param(motor1, MotorParam.sub_ver))
-print("Gr:", motor_control.read_motor_param(motor1, MotorParam.Gr))
+print("sub_ver:", motor_control.read_motor_param(motor1, MotorReg.sub_ver))
+print("Gr:", motor_control.read_motor_param(motor1, MotorReg.Gr))
 # if motor_control.change_motor_param(motor1, DM_variable.KP_APR, 54):
 #     print("write success")
-print("PMAX:", motor_control.read_motor_param(motor1, MotorParam.PMAX))
-print("MST_ID:", motor_control.read_motor_param(motor1, MotorParam.MST_ID))
-print("VMAX:", motor_control.read_motor_param(motor1, MotorParam.VMAX))
-print("TMAX:", motor_control.read_motor_param(motor1, MotorParam.TMAX))
+print("PMAX:", motor_control.read_motor_param(motor1, MotorReg.PMAX))
+print("MST_ID:", motor_control.read_motor_param(motor1, MotorReg.MST_ID))
+print("VMAX:", motor_control.read_motor_param(motor1, MotorReg.VMAX))
+print("TMAX:", motor_control.read_motor_param(motor1, MotorReg.TMAX))
 
 # 保存并使能电机
 motor_control.save_motor_param(motor1)

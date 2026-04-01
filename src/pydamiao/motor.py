@@ -5,7 +5,7 @@ from typing import TypeAlias
 import numpy as np
 from serial import Serial
 
-from pydamiao.types import ControlMode, MotorType, MotorParam, MotorLimits, MOTOR_LIMITS
+from pydamiao.types import ControlMode, MotorType, MotorReg, MotorLimits, MOTOR_LIMITS
 from pydamiao.utils import (
     data_to_uint8s,
     float_to_uint,
@@ -28,13 +28,17 @@ class Motor:
         """
         self.pos_cmd = float(0)
         self.vel_cmd = float(0)
+        self.tau_cmd = float(0)
+
         self.pos = float(0)
         self.vel = float(0)
         self.tau = float(0)
+
         self.slave_id = slave_id
         self.master_id = master_id
+
         self.motor_type = motor_type
-        self.isEnable = False
+        self.is_enable = False
         self.control_mode = ControlMode.MIT
         self.param_cache = {}
 
@@ -64,24 +68,35 @@ class Motor:
         """
         return self.tau
 
-    def get_param(self, RID: MotorParam):
+    def get_param(self, reg_id: MotorReg):
         """
         get the parameter of the motor 获取电机内部的参数，需要提前读取
-        :param RID: DM_variable 电机参数
+        :param reg_id: DM_variable 电机参数
         :return: the parameter of the motor 电机参数
         """
-        if RID in self.param_cache:
-            return self.param_cache[RID]
+        if reg_id in self.param_cache:
+            return self.param_cache[reg_id]
         else:
             return None
 
 
 class MotorControl:
     tx_frame = np.array(
-        object=[0x55, 0xAA, 0x1e, 0x03, 0x01, 
-                0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 
-                0, 0, 0, 0, 0x00, 0x08, 0x00, 0x00, 
-                0, 0, 0, 0, 0, 0, 0, 0, 0x00], 
+        object=[
+            0x55, 0xAA, # 帧头
+            0x1e,       # 帧长
+            0x03,       # 命令
+            0x01, 0x00, 0x00, 0x00,  # 发送次数			
+            0x0A, 0x00, 0x00, 0x00,  # 时间间隔			
+            0x00,                    # ID类型：0x00 标准帧, 0x01扩展帧 
+            0x00, 0x00, 0x00, 0x00,  # CAN ID			
+            0x00,                    # 帧类型：0x00 数据帧, 0x01远程帧
+            0x08,       # len
+            0x00,       # idAcc
+            0x00,       # dataAcc
+            0, 0, 0, 0, 0, 0, 0, 0,  # data[len]	
+            0x00        # CRC 校验 (CRC 底层暂时未解析 可以任意数字填充)
+        ], 
         dtype=np.uint8)  # fmt: off
 
     def __init__(self, serial_device: Serial):
@@ -97,8 +112,18 @@ class MotorControl:
             serial_device.close()
         self.serial.open()
 
+    def add_motor(self, motor: Motor):
+        """
+        add motor to the motor control object 添加电机到电机控制对象
+        :param motor: Motor object 电机对象
+        """
+        self.motors_map[motor.slave_id] = motor
+        if motor.master_id != 0:
+            self.motors_map[motor.master_id] = motor
+        return True
+
     def control_mit(
-        self, motor: Motor, kp: float, kd: float, q: float, dq: float, tau: float
+        self, motor: Motor, kp: float, kd: float, pos_cmd: float, vel_cmd: float, tau_cmd: float
     ):
         """
         MIT Control Mode Function 达妙电机MIT控制模式函数
@@ -120,9 +145,9 @@ class MotorControl:
         POS_MAX = limits.POS_MAX
         VEL_MAX = limits.VEL_MAX
         TAU_MAX = limits.TAU_MAX
-        q_uint = float_to_uint(q, -POS_MAX, POS_MAX, 16)
-        dq_uint = float_to_uint(dq, -VEL_MAX, VEL_MAX, 12)
-        tau_uint = float_to_uint(tau, -TAU_MAX, TAU_MAX, 12)
+        q_uint = float_to_uint(pos_cmd, -POS_MAX, POS_MAX, 16)
+        dq_uint = float_to_uint(vel_cmd, -VEL_MAX, VEL_MAX, 12)
+        tau_uint = float_to_uint(tau_cmd, -TAU_MAX, TAU_MAX, 12)
         tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
         tx_buf[0] = (q_uint >> 8) & 0xFF
         tx_buf[1] = q_uint & 0xFF
@@ -136,13 +161,7 @@ class MotorControl:
         self.recv()  # receive the data from serial port
 
     def control_delay(
-        self,
-        DM_Motor: Motor,
-        kp: float,
-        kd: float,
-        q: float,
-        dq: float,
-        tau: float,
+        self, motor: Motor, kp: float, kd: float, pos_cmd: float, vel_cmd: float, tau_cmd: float,
         delay: float,
     ):
         """
@@ -155,7 +174,7 @@ class MotorControl:
         :param tau: torque  期望力矩
         :param delay: delay time 延迟时间 单位秒
         """
-        self.control_mit(DM_Motor, kp, kd, q, dq, tau)
+        self.control_mit(motor, kp, kd, pos_cmd, vel_cmd, tau_cmd)
         sleep(delay)
 
     def control_pos_vel(self, motor: Motor, pos_cmd: float, vel_cmd: float):
@@ -163,19 +182,19 @@ class MotorControl:
         control the motor in position and velocity control mode 电机位置速度控制模式
         :param motor: Motor object 电机对象
         :param pos_cmd: desired position 期望位置
-        :param V_desired: desired velocity 期望速度
+        :param vel_cmd: desired velocity 期望速度
         :return: None
         """
         if motor.slave_id not in self.motors_map:
             print("Control Pos_Vel Error : Motor ID not found")
             return
-        motorid = 0x100 + motor.slave_id
+        motor_id = 0x100 + motor.slave_id
         tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
-        pos_cmd_uint8s = float_to_uint8s(pos_cmd)
-        V_desired_uint8s = float_to_uint8s(vel_cmd)
-        tx_buf[0:4] = pos_cmd_uint8s
-        tx_buf[4:8] = V_desired_uint8s
-        self.__send_data(motorid, tx_buf)
+        pos_cmd_u8s = float_to_uint8s(pos_cmd)
+        vel_cmd_u8s  = float_to_uint8s(vel_cmd)
+        tx_buf[0:4] = pos_cmd_u8s
+        tx_buf[4:8] = vel_cmd_u8s 
+        self.__send_data(motor_id, tx_buf)
         # time.sleep(0.001)
         self.recv()  # receive the data from serial port
 
@@ -183,16 +202,16 @@ class MotorControl:
         """
         control the motor in velocity control mode 电机速度控制模式
         :param motor: Motor object 电机对象
-        :param Vel_desired: desired velocity 期望速度
+        :param vel_cmd: desired velocity 期望速度
         """
         if motor.slave_id not in self.motors_map:
             print("control_VEL ERROR : Motor ID not found")
             return
-        motorid = 0x200 + motor.slave_id
+        motor_id = 0x200 + motor.slave_id
         tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
-        Vel_desired_uint8s = float_to_uint8s(vel_cmd)
-        tx_buf[0:4] = Vel_desired_uint8s
-        self.__send_data(motorid, tx_buf)
+        vel_cmd_u8s = float_to_uint8s(vel_cmd)
+        tx_buf[0:4] = vel_cmd_u8s
+        self.__send_data(motor_id, tx_buf)
         self.recv()  # receive the data from serial port
 
     def control_pos_force(self, motor: Motor, pos_cmd: float, vel_cmd: float, cur_cmd: float):
@@ -208,8 +227,8 @@ class MotorControl:
             return
         motor_id = 0x300 + motor.slave_id
         tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
-        pos_cmd_uint8s = float_to_uint8s(pos_cmd)
-        tx_buf[0:4] = pos_cmd_uint8s
+        pos_cmd_u8s = float_to_uint8s(pos_cmd)
+        tx_buf[0:4] = pos_cmd_u8s
         vel_cmd_uint = np.uint16(vel_cmd)
         cur_cmd_uint = np.uint16(cur_cmd)
         tx_buf[4] = vel_cmd_uint & 0xFF
@@ -260,9 +279,15 @@ class MotorControl:
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
+
+    ####### 辅助函数 #######
+
     def recv(self):
-        # 把上次没有解析完的剩下的也放进来
-        read_data = self.serial.read_all()
+        """
+        receive the data from serial port 从串口接收数据
+        """
+
+        read_data = self.serial.read_all()   # 把上次没有解析完的剩下的也放进来
         data_recv = b"".join(
             [self.rx_buf, read_data if read_data is not None else b""]
         )
@@ -274,7 +299,12 @@ class MotorControl:
             self.__process_packet(data, CANID, CMD)
 
     def recv_set_param_data(self):
+        """
+        receive the data from serial port from serial port 从串口接收设置参数数据
+        """
         data_recv = self.serial.read_all()
+        if data_recv is None:
+            data_recv = b""
         packets = self.__extract_packets(data_recv)
         for packet in packets:
             data = packet[7:15]
@@ -282,43 +312,54 @@ class MotorControl:
             CMD = packet[1]
             self.__process_set_param_packet(data, CANID, CMD)
 
-    def __process_packet(self, data, CANID, CMD):
-        if CMD == 0x11:
-            if CANID != 0x00:
-                if CANID in self.motors_map:
-                    q_uint = np.uint16((np.uint16(data[1]) << 8) | data[2])
-                    dq_uint = np.uint16((np.uint16(data[3]) << 4) | (data[4] >> 4))
-                    tau_uint = np.uint16(((data[4] & 0xF) << 8) | data[5])
-                    MotorType_recv = self.motors_map[CANID].motor_type
-                    limits = MOTOR_LIMITS[MotorType_recv]
-                    POS_MAX = limits.POS_MAX
-                    VEL_MAX = limits.VEL_MAX
-                    TAU_MAX = limits.TAU_MAX
-                    recv_q = uint_to_float(q_uint, -POS_MAX, POS_MAX, 16)
-                    recv_dq = uint_to_float(dq_uint, -VEL_MAX, VEL_MAX, 12)
-                    recv_tau = uint_to_float(tau_uint, -TAU_MAX, TAU_MAX, 12)
-                    self.motors_map[CANID].recv_data(float(recv_q), float(recv_dq), float(recv_tau))
-            else:
-                master_id = data[0] & 0x0F
-                if master_id in self.motors_map:
-                    q_uint = np.uint16((np.uint16(data[1]) << 8) | data[2])
-                    dq_uint = np.uint16((np.uint16(data[3]) << 4) | (data[4] >> 4))
-                    tau_uint = np.uint16(((data[4] & 0xF) << 8) | data[5])
-                    MotorType_recv = self.motors_map[master_id].motor_type
-                    limits = MOTOR_LIMITS[MotorType_recv]
-                    POS_MAX = limits.POS_MAX
-                    VEL_MAX = limits.VEL_MAX
-                    TAU_MAX = limits.TAU_MAX
-                    recv_q = uint_to_float(q_uint, -POS_MAX, POS_MAX, 16)
-                    recv_dq = uint_to_float(dq_uint, -VEL_MAX, VEL_MAX, 12)
-                    recv_tau = uint_to_float(tau_uint, -TAU_MAX, TAU_MAX, 12)
-                    self.motors_map[master_id].recv_data(float(recv_q), float(recv_dq), float(recv_tau))
+    def __extract_packets(self, data: bytes) -> list[bytes]:
+        frames = []
+        header = 0xAA
+        tail = 0x55
+        frame_length = 16
+        i = 0
+        remainder_pos = 0
 
-    def __process_set_param_packet(self, data, CANID, CMD):
+        while i <= len(data) - frame_length:
+            if data[i] == header and data[i + frame_length - 1] == tail:
+                frame = data[i : i + frame_length]
+                frames.append(frame)
+                i += frame_length
+                remainder_pos = i
+            else:
+                i += 1
+        self.rx_buf = data[remainder_pos:]
+        return frames
+
+    def __process_packet(self, data: bytes, can_id: Hex, CMD: Hex) -> None:
+        if CMD == 0x11:
+            # Determine target motor ID
+            if can_id != 0x00:
+                target_id = can_id
+            else:
+                target_id = data[0] & 0x0F
+
+            # Process only if target motor exists
+            if target_id in self.motors_map:
+                pos_uint = np.uint16((np.uint16(data[1]) << 8) | data[2])
+                vel_uint = np.uint16((np.uint16(data[3]) << 4) | (data[4] >> 4))
+                tau_uint = np.uint16(((data[4] & 0xF) << 8) | data[5])
+                motor_type_recv = self.motors_map[target_id].motor_type
+                limits = MOTOR_LIMITS[motor_type_recv]
+                POS_MAX = limits.POS_MAX
+                VEL_MAX = limits.VEL_MAX
+                TAU_MAX = limits.TAU_MAX
+                recv_pos = uint_to_float(pos_uint, -POS_MAX, POS_MAX, 16)
+                recv_vel = uint_to_float(vel_uint, -VEL_MAX, VEL_MAX, 12)
+                recv_tau = uint_to_float(tau_uint, -TAU_MAX, TAU_MAX, 12)
+                self.motors_map[target_id].recv_data(
+                    float(recv_pos), float(recv_vel), float(recv_tau)
+                )
+    def __process_set_param_packet(self, data: bytes, can_id: Hex, CMD: Hex) -> None:
         if CMD == 0x11 and (data[2] == 0x33 or data[2] == 0x55):
-            master_id = CANID
+            master_id = can_id
             slave_id = (data[1] << 8) | data[0]
-            if CANID == 0x00:  # 防止有人把master_id设为0稳一手
+            if can_id == 0x00:  # 防止有人把master_id设为0稳一手
                 master_id = slave_id
 
             if master_id not in self.motors_map:
@@ -327,33 +368,24 @@ class MotorControl:
                 else:
                     master_id = slave_id
 
-            RID = data[3]
+            reg_id = data[3]
             # 读取参数得到的数据
-            if is_in_ranges(RID):
+            if is_in_ranges(reg_id):
                 # uint32类型
                 num = uint8s_to_uint32(data[4], data[5], data[6], data[7])
-                self.motors_map[master_id].param_cache[RID] = num
+                self.motors_map[master_id].param_cache[reg_id] = num
 
             else:
                 # float类型
                 num = uint8s_to_float(data[4], data[5], data[6], data[7])
-                self.motors_map[master_id].param_cache[RID] = num
+                self.motors_map[master_id].param_cache[reg_id] = num
 
-    def add_motor(self, motor: Motor):
-        """
-        add motor to the motor control object 添加电机到电机控制对象
-        :param motor: Motor object 电机对象
-        """
-        self.motors_map[motor.slave_id] = motor
-        if motor.master_id != 0:
-            self.motors_map[motor.master_id] = motor
-        return True
 
     def __control_cmd(self, motor: Motor, cmd: np.uint8):
         tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, cmd], np.uint8)
         self.__send_data(motor.slave_id, tx_buf)
 
-    def __send_data(self, motor_id, data):
+    def __send_data(self, motor_id: Hex, data: np.ndarray) -> None:
         """
         send data to the motor 发送数据到电机
         :param motor_id:
@@ -365,7 +397,7 @@ class MotorControl:
         self.tx_frame[21:29] = data
         self.serial.write(bytes(self.tx_frame.T))
 
-    def __read_RID_param(self, motor: Motor, RID: MotorParam):
+    def __read_motor_param(self, motor: Motor, reg_id: MotorReg):
         can_id_l = motor.slave_id & 0xFF  # id low 8 bits
         can_id_h = (motor.slave_id >> 8) & 0xFF  # id high 8 bits
         tx_buf = np.array(
@@ -373,7 +405,7 @@ class MotorControl:
                 np.uint8(can_id_l),
                 np.uint8(can_id_h),
                 0x33,
-                np.uint8(RID),
+                np.uint8(reg_id),
                 0x00,
                 0x00,
                 0x00,
@@ -383,7 +415,7 @@ class MotorControl:
         )
         self.__send_data(0x7FF, tx_buf)
 
-    def __write_motor_param(self, motor: Motor, RID: MotorParam, data):
+    def __write_motor_param(self, motor: Motor, reg_id: MotorReg, data):
         can_id_l = motor.slave_id & 0xFF  # id low 8 bits
         can_id_h = (motor.slave_id >> 8) & 0xFF  # id high 8 bits
         tx_buf = np.array(
@@ -391,7 +423,7 @@ class MotorControl:
                 np.uint8(can_id_l),
                 np.uint8(can_id_h),
                 0x55,
-                np.uint8(RID),
+                np.uint8(reg_id),
                 0x00,
                 0x00,
                 0x00,
@@ -399,7 +431,7 @@ class MotorControl:
             ],
             np.uint8,
         )
-        if not is_in_ranges(RID):
+        if not is_in_ranges(reg_id):
             # data is float
             tx_buf[4:8] = float_to_uint8s(data)
         else:
@@ -407,7 +439,7 @@ class MotorControl:
             tx_buf[4:8] = data_to_uint8s(int(data))
         self.__send_data(0x7FF, tx_buf)
 
-    def switch_control_mode(self, motor: Motor, ControlMode: ControlMode):
+    def switch_control_mode(self, motor: Motor, control_mode: ControlMode):
         """
         switch the control mode of the motor 切换电机控制模式
         :param motor: Motor object 电机对象
@@ -415,18 +447,18 @@ class MotorControl:
         """
         max_retries = 20
         retry_interval = 0.1  # retry times
-        # RID = 10
-        RID = MotorParam.CTRL_MODE
-        self.__write_motor_param(motor, RID, np.uint8(ControlMode))
+        # reg_id = 10
+        reg_id = MotorReg.CTRL_MODE
+        self.__write_motor_param(motor, reg_id, np.uint8(control_mode))
         for _ in range(max_retries):
             sleep(retry_interval)
             self.recv_set_param_data()
             if motor.slave_id in self.motors_map:
-                if RID in self.motors_map[motor.slave_id].param_cache:
+                if reg_id in self.motors_map[motor.slave_id].param_cache:
                     if (
                         abs(
-                            self.motors_map[motor.slave_id].param_cache[RID]
-                            - ControlMode
+                            self.motors_map[motor.slave_id].param_cache[reg_id]
+                            - control_mode
                         )
                         < 0.1
                     ):
@@ -470,7 +502,6 @@ class MotorControl:
         :return:
         """
         
-        # Note: Since MOTOR_LIMITS contains immutable NamedTuples, we need to replace the entire entry
         MOTOR_LIMITS[motor_type] = MotorLimits(PMAX, VMAX, TMAX)
 
     def refresh_motor_status(self, motor: Motor):
@@ -495,26 +526,26 @@ class MotorControl:
         self.__send_data(0x7FF, tx_buf)
         self.recv()  # receive the data from serial port
 
-    def change_motor_param(self, motor: Motor, RID: MotorParam, data):
+    def change_motor_param(self, motor: Motor, reg_id: MotorReg, data):
         """
-        change the RID of the motor 改变电机的参数
+        change the reg_id of the motor 改变电机的参数
         :param motor: Motor object 电机对象
-        :param RID: DM_variable 电机参数
+        :param reg_id: DM_variable 电机参数
         :param data: 电机参数的值
         :return: True or False ,True means success, False means fail
         """
         max_retries = 20
         retry_interval = 0.05  # retry times
 
-        self.__write_motor_param(motor, RID, data)
+        self.__write_motor_param(motor, reg_id, data)
         for _ in range(max_retries):
             self.recv_set_param_data()
             if (
                 motor.slave_id in self.motors_map
-                and RID in self.motors_map[motor.slave_id].param_cache
+                and reg_id in self.motors_map[motor.slave_id].param_cache
             ):
                 if (
-                    abs(self.motors_map[motor.slave_id].param_cache[RID] - data)
+                    abs(self.motors_map[motor.slave_id].param_cache[reg_id] - data)
                     < 0.1
                 ):
                     return True
@@ -523,41 +554,20 @@ class MotorControl:
             sleep(retry_interval)
         return False
 
-    def read_motor_param(self, motor: Motor, RID: MotorParam):
+    def read_motor_param(self, motor: Motor, reg_id: MotorReg):
         """
-        read only the RID of the motor 读取电机的内部信息例如 版本号等
+        read only the reg_id of the motor 读取电机的内部信息例如 版本号等
         :param motor: Motor object 电机对象
-        :param RID: DM_variable 电机参数
+        :param reg_id: DM_variable 电机参数
         :return: 电机参数的值
         """
         max_retries = 20
         retry_interval = 0.05  # retry times
-        self.__read_RID_param(motor, RID)
+        self.__read_motor_param(motor, reg_id)
         for _ in range(max_retries):
             sleep(retry_interval)
             self.recv_set_param_data()
             if motor.slave_id in self.motors_map:
-                if RID in self.motors_map[motor.slave_id].param_cache:
-                    return self.motors_map[motor.slave_id].param_cache[RID]
+                if reg_id in self.motors_map[motor.slave_id].param_cache:
+                    return self.motors_map[motor.slave_id].param_cache[reg_id]
         return None
-
-    # -------------------------------------------------
-    # Extract packets from the serial data
-    def __extract_packets(self, data):
-        frames = []
-        header = 0xAA
-        tail = 0x55
-        frame_length = 16
-        i = 0
-        remainder_pos = 0
-
-        while i <= len(data) - frame_length:
-            if data[i] == header and data[i + frame_length - 1] == tail:
-                frame = data[i : i + frame_length]
-                frames.append(frame)
-                i += frame_length
-                remainder_pos = i
-            else:
-                i += 1
-        self.rx_buf = data[remainder_pos:]
-        return frames

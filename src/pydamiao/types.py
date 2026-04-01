@@ -41,7 +41,7 @@ MOTOR_LIMITS = {
 }
 
 # 电机参数枚举
-class MotorParam(IntEnum):
+class MotorReg(IntEnum):
     UV_Value = 0
     KT_Value = 1
     OT_Value = 2
