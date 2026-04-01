@@ -24,9 +24,9 @@ class MotorType(IntEnum):
 class MotorLimits(NamedTuple):
     POS_MAX: float  # 位置限制 (弧度)
     VEL_MAX: float  # 角速度限制 (弧度/秒)
-    TAU_MAX: float  # 力矩限制 (牛·米)
+    TORQUE_MAX: float  # 力矩限制 (牛·米)
 
-# 电机限制参数 - 每个电机型号对应的 [POS_MAX, VEL_MAX, TAU_MAX]
+# 电机限制参数 - 每个电机型号对应的 [POS_MAX, VEL_MAX, TORQUE_MAX]
 MOTOR_LIMITS = {
     MotorType.DM4310: MotorLimits(12.5, 30, 10),
     MotorType.DM4310_48V: MotorLimits(12.5, 50, 10),
@@ -121,3 +121,4 @@ class CanResp(IntEnum):
     BAUD_RATE_SET_SUCCESS = 0x13  # 波特率设置成功
 
     COMM_ERROR = 0xEE       # 通讯错误信息
+
