@@ -27,20 +27,34 @@ class Motor:
             slave_id: 电机接收 id。
             master_id: 某些固件配置下使用的可选反馈 id。
         """
+        # 通讯总线
         self.bus = bus
+
+        # 对象属性
         self.motor_type = motor_type
         self.slave_id = slave_id
         self.master_id = master_id
 
+        # 可从电机中读取的状态
         self.pos = 0.0
         self.vel = 0.0
         self.torque = 0.0
-        self.enabled = False
+
+        self.mos_temp: int | None = None
+        self.rotor_temp: int | None = None
+
         self.fault: MotorFault | None = None
-        self.control_mode: ControlMode | None = None
         self.param_cache: dict[int, float | int] = {}
+
+        # 手动维护的状态
+        self.enabled = False
+        self.control_mode: ControlMode | None = None
         self.last_update_time: float | None = None
+
+        # 状态锁
         self._state_lock = threading.RLock()
+
+        # 注册电机通讯总线
         self.bus.register_motor(self)
 
     @property
@@ -75,6 +89,16 @@ class Motor:
         with self._state_lock:
             return self.torque
 
+    def get_mos_temp(self) -> int | None:
+        """返回当前缓存中的 MOS 温度。"""
+        with self._state_lock:
+            return self.mos_temp
+
+    def get_rotor_temp(self) -> int | None:
+        """返回当前缓存中的转子温度。"""
+        with self._state_lock:
+            return self.rotor_temp
+
     def get_param(self, reg_id: MotorReg) -> float | int | None:
         """返回缓存中的寄存器值；如果尚未读取则返回 ``None``。"""
         with self._state_lock:
@@ -104,6 +128,7 @@ class Motor:
             if result:
                 state = self.get_state()
                 if abs(state.vel) <= 0.02:
+                    print("Motor stopped")
                     return Result()
 
     def set_zero(self) -> Result[None]:
@@ -345,6 +370,8 @@ class Motor:
                 self.vel = vel
                 self.torque = torque
                 self.fault = message.fault
+                self.mos_temp = message.mos_temp
+                self.rotor_temp = message.rotor_temp
                 if message.fault not in (None, MotorFault.NONE):
                     self.enabled = False
                 self.last_update_time = time.time()

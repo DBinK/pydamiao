@@ -22,6 +22,8 @@ class ParsedMessage:
     value: float | int | None = None
     slave_id: int | None = None
     fault: MotorFault | None = None
+    mos_temp: int | None = None
+    rotor_temp: int | None = None
 
 
 class DamiaoProtocol:
@@ -228,6 +230,7 @@ class DamiaoProtocol:
                 )
 
             route_id = can_id if can_id != 0 else data[0] & 0x0F
+            mos_temp, rotor_temp = cls.decode_temperatures(data)
             return ParsedMessage(
                 kind="status",
                 can_cmd=can_resp,
@@ -235,6 +238,8 @@ class DamiaoProtocol:
                 data=data,
                 route_ids=(route_id,),
                 fault=cls.decode_fault(data),
+                mos_temp=mos_temp,
+                rotor_temp=rotor_temp,
             )
 
         kind = "heartbeat" if can_resp == CanResp.HEARTBEAT else "can_result"
@@ -262,3 +267,8 @@ class DamiaoProtocol:
             return MotorFault(fault_code)
         except ValueError:
             return None
+
+    @classmethod
+    def decode_temperatures(cls, data: bytes) -> tuple[int, int]:
+        """从状态 payload 中解码 MOS 和转子温度。"""
+        return data[6], data[7]

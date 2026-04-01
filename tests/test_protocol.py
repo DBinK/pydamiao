@@ -16,6 +16,8 @@ def make_status_payload(
     torque: float,
     source_id: int,
     fault: MotorFault = MotorFault.NONE,
+    mos_temp: int = 0,
+    rotor_temp: int = 0,
 ) -> bytes:
     limits = MOTOR_LIMITS[motor_type]
     pos_uint = int(float_to_uint(pos, -limits.POS_MAX, limits.POS_MAX, 16))
@@ -30,8 +32,8 @@ def make_status_payload(
             (vel_uint >> 4) & 0xFF,
             ((vel_uint & 0x0F) << 4) | ((torque_uint >> 8) & 0x0F),
             torque_uint & 0xFF,
-            0x00,
-            0x00,
+            mos_temp & 0xFF,
+            rotor_temp & 0xFF,
         ]
     )
 
@@ -115,3 +117,25 @@ def test_parse_frame_decodes_fault_code_from_status():
 
     assert message.kind == "status"
     assert message.fault == MotorFault.OVER_CURRENT
+
+
+def test_parse_frame_decodes_temperatures_from_status():
+    frame = make_rx_frame(
+        CanResp.RECEIVE_SUCCESS,
+        0x16,
+        make_status_payload(
+            MotorType.DM4310,
+            pos=0.0,
+            vel=0.0,
+            torque=0.0,
+            source_id=0x06,
+            mos_temp=53,
+            rotor_temp=61,
+        ),
+    )
+
+    message = DamiaoProtocol.parse_frame(frame)
+
+    assert message.kind == "status"
+    assert message.mos_temp == 53
+    assert message.rotor_temp == 61

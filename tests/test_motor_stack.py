@@ -63,6 +63,8 @@ def make_status_payload(
     torque: float,
     source_id: int,
     fault: MotorFault = MotorFault.NONE,
+    mos_temp: int = 0,
+    rotor_temp: int = 0,
 ) -> bytes:
     limits = MOTOR_LIMITS[MotorType.DM4310]
     pos_uint = int(float_to_uint(pos, -limits.POS_MAX, limits.POS_MAX, 16))
@@ -77,8 +79,8 @@ def make_status_payload(
             (vel_uint >> 4) & 0xFF,
             ((vel_uint & 0x0F) << 4) | ((torque_uint >> 8) & 0x0F),
             torque_uint & 0xFF,
-            0x00,
-            0x00,
+            mos_temp & 0xFF,
+            rotor_temp & 0xFF,
         ]
     )
 
@@ -160,6 +162,35 @@ def test_motor_caches_fault_code_from_status_feedback():
         assert result.ok
         assert motor.fault == MotorFault.UNDER_VOLTAGE
         assert motor.enabled is False
+    finally:
+        bus.close()
+
+
+def test_motor_caches_temperatures_from_status_feedback():
+    fake_serial = FakeSerial()
+    bus = SerialBus(fake_serial, timeout=0.01)
+    motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16)
+
+    try:
+        frame = make_rx_frame(
+            CanResp.RECEIVE_SUCCESS,
+            0x16,
+            make_status_payload(
+                pos=0.0,
+                vel=0.0,
+                torque=0.0,
+                source_id=0x06,
+                mos_temp=48,
+                rotor_temp=55,
+            ),
+        )
+        feed_later(fake_serial, frame)
+
+        result = motor.refresh_state(timeout=0.2)
+
+        assert result.ok
+        assert motor.get_mos_temp() == 48
+        assert motor.get_rotor_temp() == 55
     finally:
         bus.close()
 
