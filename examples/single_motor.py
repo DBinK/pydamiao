@@ -1,48 +1,37 @@
 import math
 import time
 
-import serial
-from pydamiao.types import MotorType, ControlMode, MotorReg
-from pydamiao.motor import Motor, MotorController
+from pydamiao import ControlMode, Motor, MotorReg, MotorType, SerialBus
 
-# 创建电机对象和串口对象
-motor1 = Motor(MotorType.DM4310, 0x06, 0x16)
-serial_device = serial.Serial("COM9", 921600, timeout=0.5)
-controller = MotorController(serial_device)
-controller.add_motor(motor1)
+# 创建串口总线和电机对象
+bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
+motor1 = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16)
 
 # 读取和修改电机参数示例
-if controller.switch_control_mode(motor1, ControlMode.POS_VEL):
-    print("switch POS_VEL success")
+# if motor1.set_mode(ControlMode.POS_VEL):
+    # print("switch POS_VEL success")
 
-print("sub_ver:", controller.read_motor_param(motor1, MotorReg.sub_ver))
-print("Gr:", controller.read_motor_param(motor1, MotorReg.Gr))
-# if motor_control.change_motor_param(motor1, DM_variable.KP_APR, 54):
-#     print("write success")
-print("PMAX:", controller.read_motor_param(motor1, MotorReg.PMAX))
-print("MST_ID:", controller.read_motor_param(motor1, MotorReg.MST_ID))
-print("VMAX:", controller.read_motor_param(motor1, MotorReg.VMAX))
-print("TMAX:", controller.read_motor_param(motor1, MotorReg.TMAX))
+print("sub_ver:", motor1.read_param(MotorReg.sub_ver).value)
+print("Gr:", motor1.read_param(MotorReg.Gr).value)
+print("PMAX:", motor1.read_param(MotorReg.PMAX).value)
+print("MST_ID:", motor1.read_param(MotorReg.MST_ID).value)
+print("VMAX:", motor1.read_param(MotorReg.VMAX).value)
+print("TMAX:", motor1.read_param(MotorReg.TMAX).value)
 
 # 保存并使能电机
-controller.save_motor_param(motor1)
-controller.enable(motor1)
-controller.disable(motor1)
+motor1.save_params()
+# motor1.enable()
+# motor1.disable()
 
 # 控制电机运动示例
 i = 0
 while i < 1000:
     q = math.sin(time.time())
     i += 1
-    # motor_control.control_pos_force(motor1, 10, 1000, 100)
-    # motor_control.control_vel(motor1, q * 5)
-    # motor_control.control_pos_vel(motor1, q * 8, 3)
-    controller.refresh_motor_status(motor1)
-    print("Motor1:", "POS:", motor1.get_position(), "VEL:", motor1.get_velocity(), "TORQUE:", motor1.get_torque())
-    # motor_control.control_mit(motor2, 35, 0.1, 8 * q, 0, 0)
+    motor1.refresh_state()
+    print("Motor1:", "POS:", motor1.pos, "VEL:", motor1.vel, "TORQUE:", motor1.torque)
 
     time.sleep(0.01)
-    # motor_control.control(motor3, 50, 0.3, q, 0, 0)
 
 # 语句结束关闭串口
-serial_device.close()
+bus.close()

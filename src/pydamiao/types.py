@@ -26,6 +26,12 @@ class MotorLimits(NamedTuple):
     VEL_MAX: float  # 角速度限制 (弧度/秒)
     TORQUE_MAX: float  # 力矩限制 (牛·米)
 
+
+class MotorState(NamedTuple):
+    pos: float
+    vel: float
+    torque: float
+
 # 电机限制参数 - 每个电机型号对应的 [POS_MAX, VEL_MAX, TORQUE_MAX]
 MOTOR_LIMITS = {
     MotorType.DM4310: MotorLimits(12.5, 30, 10),

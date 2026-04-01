@@ -1,11 +1,18 @@
 # src/pydamiao/__init__.py
-from pydamiao.motor import Motor, MotorController
-from pydamiao.types import MotorType, ControlMode, MotorReg
+from pydamiao.bus import SerialBus
+from pydamiao.motor import Motor, MotorManager
+from pydamiao.protocol import DamiaoProtocol
+from pydamiao.result import Result
+from pydamiao.types import ControlMode, MotorReg, MotorState, MotorType
 
 __all__ = [
+    "DamiaoProtocol",
     "Motor",
-    "MotorController",
+    "MotorManager",
+    "MotorState",
     "MotorType",
+    "Result",
+    "SerialBus",
     "ControlMode",
-    "MotorReg"
+    "MotorReg",
 ]
