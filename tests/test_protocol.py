@@ -1,7 +1,7 @@
 import pytest
 
 from pydamiao.protocol import DamiaoProtocol
-from pydamiao.types import CanResp, MotorReg, MotorType, MOTOR_LIMITS
+from pydamiao.types import CanResp, MotorFault, MotorReg, MotorType, MOTOR_LIMITS
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s
 
 
@@ -9,7 +9,14 @@ def make_rx_frame(can_resp: CanResp, can_id: int, payload: bytes) -> bytes:
     return bytes([0xAA, int(can_resp), 0x00]) + can_id.to_bytes(4, "little") + payload + bytes([0x55])
 
 
-def make_status_payload(motor_type: MotorType, pos: float, vel: float, torque: float, source_id: int) -> bytes:
+def make_status_payload(
+    motor_type: MotorType,
+    pos: float,
+    vel: float,
+    torque: float,
+    source_id: int,
+    fault: MotorFault = MotorFault.NONE,
+) -> bytes:
     limits = MOTOR_LIMITS[motor_type]
     pos_uint = int(float_to_uint(pos, -limits.POS_MAX, limits.POS_MAX, 16))
     vel_uint = int(float_to_uint(vel, -limits.VEL_MAX, limits.VEL_MAX, 12))
@@ -17,7 +24,7 @@ def make_status_payload(motor_type: MotorType, pos: float, vel: float, torque: f
 
     return bytes(
         [
-            source_id & 0xFF,
+            ((int(fault) & 0x0F) << 4) | (source_id & 0x0F),
             (pos_uint >> 8) & 0xFF,
             pos_uint & 0xFF,
             (vel_uint >> 4) & 0xFF,
@@ -88,3 +95,23 @@ def test_decode_status_round_trip():
     assert pos == pytest.approx(1.25, abs=0.01)
     assert vel == pytest.approx(-3.5, abs=0.05)
     assert torque == pytest.approx(2.5, abs=0.05)
+
+
+def test_parse_frame_decodes_fault_code_from_status():
+    frame = make_rx_frame(
+        CanResp.RECEIVE_SUCCESS,
+        0x16,
+        make_status_payload(
+            MotorType.DM4310,
+            pos=0.0,
+            vel=0.0,
+            torque=0.0,
+            source_id=0x06,
+            fault=MotorFault.OVER_CURRENT,
+        ),
+    )
+
+    message = DamiaoProtocol.parse_frame(frame)
+
+    assert message.kind == "status"
+    assert message.fault == MotorFault.OVER_CURRENT

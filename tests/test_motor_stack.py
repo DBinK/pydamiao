@@ -5,7 +5,7 @@ import pytest
 
 from pydamiao import ControlMode, Motor, MotorManager, MotorReg, MotorType, Result, SerialBus
 from pydamiao.protocol import DamiaoProtocol
-from pydamiao.types import CanResp, MOTOR_LIMITS
+from pydamiao.types import CanResp, MotorFault, MOTOR_LIMITS
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s
 
 
@@ -57,7 +57,13 @@ def make_rx_frame(can_resp: CanResp, can_id: int, payload: bytes) -> bytes:
     return bytes([0xAA, int(can_resp), 0x00]) + can_id.to_bytes(4, "little") + payload + bytes([0x55])
 
 
-def make_status_payload(pos: float, vel: float, torque: float, source_id: int) -> bytes:
+def make_status_payload(
+    pos: float,
+    vel: float,
+    torque: float,
+    source_id: int,
+    fault: MotorFault = MotorFault.NONE,
+) -> bytes:
     limits = MOTOR_LIMITS[MotorType.DM4310]
     pos_uint = int(float_to_uint(pos, -limits.POS_MAX, limits.POS_MAX, 16))
     vel_uint = int(float_to_uint(vel, -limits.VEL_MAX, limits.VEL_MAX, 12))
@@ -65,7 +71,7 @@ def make_status_payload(pos: float, vel: float, torque: float, source_id: int) -
 
     return bytes(
         [
-            source_id & 0xFF,
+            ((int(fault) & 0x0F) << 4) | (source_id & 0x0F),
             (pos_uint >> 8) & 0xFF,
             pos_uint & 0xFF,
             (vel_uint >> 4) & 0xFF,
@@ -126,6 +132,34 @@ def test_motor_refresh_state_uses_background_receiver():
         assert state.torque == pytest.approx(0.8, abs=0.05)
         assert motor.get_position() == pytest.approx(1.2, abs=0.02)
         assert motor.last_update_time is not None
+    finally:
+        bus.close()
+
+
+def test_motor_caches_fault_code_from_status_feedback():
+    fake_serial = FakeSerial()
+    bus = SerialBus(fake_serial, timeout=0.01)
+    motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16)
+
+    try:
+        frame = make_rx_frame(
+            CanResp.RECEIVE_SUCCESS,
+            0x16,
+            make_status_payload(
+                pos=0.0,
+                vel=0.0,
+                torque=0.0,
+                source_id=0x06,
+                fault=MotorFault.UNDER_VOLTAGE,
+            ),
+        )
+        feed_later(fake_serial, frame)
+
+        result = motor.refresh_state(timeout=0.2)
+
+        assert result.ok
+        assert motor.fault == MotorFault.UNDER_VOLTAGE
+        assert motor.enabled is False
     finally:
         bus.close()
 
@@ -192,12 +226,44 @@ def test_motor_timeout_and_unsupported_paths_return_result_errors():
 
     try:
         timeout_result = motor.read_param(MotorReg.PMAX, timeout=0.05)
-        unsupported_result = motor.clear_error()
+        clear_result = motor.clear_error()
 
         assert not timeout_result.ok
         assert timeout_result.code == "timeout"
-        assert not unsupported_result.ok
-        assert unsupported_result.code == "unsupported"
+        assert clear_result.ok
+    finally:
+        bus.close()
+
+
+def test_control_commands_are_blocked_when_motor_has_fault():
+    fake_serial = FakeSerial()
+    bus = SerialBus(fake_serial, timeout=0.01)
+    motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16)
+
+    try:
+        feed_later(
+            fake_serial,
+            make_rx_frame(
+                CanResp.RECEIVE_SUCCESS,
+                0x16,
+                make_status_payload(
+                    pos=0.0,
+                    vel=0.0,
+                    torque=0.0,
+                    source_id=0x06,
+                    fault=MotorFault.OVER_CURRENT,
+                ),
+            ),
+        )
+        motor.refresh_state(timeout=0.2)
+
+        result = motor.set_pos_vel(1.0, 2.0)
+
+        assert not result.ok
+        assert result.code == "fault"
+        assert fake_serial.writes == [
+            DamiaoProtocol.encode_refresh_state(0x06),
+        ]
     finally:
         bus.close()
 

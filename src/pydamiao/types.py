@@ -3,11 +3,12 @@
 from enum import IntEnum
 from typing import NamedTuple, TypeAlias
 
-# 类型别名
-Hex: TypeAlias = int
 
-# 电机类型
+Hex: TypeAlias = int   # 类型别名
+
+
 class MotorType(IntEnum):
+    """电机类型枚举类"""
     DM4310 = 0
     DM4310_48V = 1
     DM4340 = 2
@@ -21,16 +22,12 @@ class MotorType(IntEnum):
     DMH6215 = 10
     DMG6220 = 11
 
+
 class MotorLimits(NamedTuple):
-    POS_MAX: float  # 位置限制 (弧度)
-    VEL_MAX: float  # 角速度限制 (弧度/秒)
+    """电机最大限制参数"""
+    POS_MAX: float     # 位置限制 (弧度)
+    VEL_MAX: float     # 角速度限制 (弧度/秒)
     TORQUE_MAX: float  # 力矩限制 (牛·米)
-
-
-class MotorState(NamedTuple):
-    pos: float
-    vel: float
-    torque: float
 
 # 电机限制参数 - 每个电机型号对应的 [POS_MAX, VEL_MAX, TORQUE_MAX]
 MOTOR_LIMITS = {
@@ -48,7 +45,7 @@ MOTOR_LIMITS = {
     MotorType.DMG6220: MotorLimits(12.5, 45, 10),
 }
 
-# 电机寄存器参数枚举, 官方文档中称为 RID
+
 class MotorReg(IntEnum):
     """
     电机寄存器参数枚举, 官方文档中称为 RID
@@ -111,16 +108,23 @@ class MotorReg(IntEnum):
         return (7 <= reg_id <= 10) or (13 <= reg_id <= 16) or (35 <= reg_id <= 36)
 
 
-# 控制模式枚举
 class ControlMode(IntEnum):
-    MIT = 1
-    POS_VEL = 2
-    VEL = 3
-    TORQUE_POS = 4
+    """控制模式枚举"""
+    MIT = 1         # MIT控制
+    POS_VEL = 2     # 位置-速度控制
+    VEL = 3         # 速度控制
+    TORQUE_POS = 4  # 扭矩-位置控制
 
 
-# CAN 命令反馈枚举
+class MotorState(NamedTuple):
+    """电机运动状态结构体"""
+    pos: float
+    vel: float
+    torque: float
+
+
 class CanResp(IntEnum):
+    """CAN响应枚举"""
     #! 注意: 在官方文档的 CAN接收数据帧格式 中, 本字段被称为 CAN 命令
     HEARTBEAT = 0x00        # 心跳
 
@@ -130,8 +134,20 @@ class CanResp(IntEnum):
     SEND_FAILED = 0x02      # 数据发送失败
     SEND_SUCCESS = 0x12     # 数据发送成功
 
-    BAUD_RATE_SET_FAILED = 0x03  # 波特率设置失败
+    BAUD_RATE_SET_FAILED = 0x03   # 波特率设置失败
     BAUD_RATE_SET_SUCCESS = 0x13  # 波特率设置成功
 
     COMM_ERROR = 0xEE       # 通讯错误信息
+
+
+class MotorFault(IntEnum):
+    """电机反馈帧中的故障码"""
+    NONE = 0x0            # 无故障
+    OVER_VOLTAGE = 0x8    # 超压
+    UNDER_VOLTAGE = 0x9   # 欠压
+    OVER_CURRENT = 0xA    # 过电流
+    MOS_OVER_TEMP = 0xB   # MOS 过温
+    COIL_OVER_TEMP = 0xC  # 电机线圈过温
+    COMM_LOSS = 0xD       # 通讯丢失
+    OVERLOAD = 0xE        # 过载
 

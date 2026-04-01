@@ -23,7 +23,7 @@ motor.save_params()
 motor.enable()
 
 # 控制电机运动示例
-for _ in range(100):
+for _ in range(1000):
     vel = math.sin(time.time())
     motor.set_velocity(vel)
 

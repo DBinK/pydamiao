@@ -5,7 +5,7 @@ from struct import pack
 
 import numpy as np
 
-from pydamiao.types import CanResp, Hex, MotorLimits, MotorReg
+from pydamiao.types import CanResp, Hex, MotorFault, MotorLimits, MotorReg
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s, uint8s_to_float, uint8s_to_uint32, uint_to_float
 
 
@@ -21,6 +21,7 @@ class ParsedMessage:
     reg_id: int | None = None
     value: float | int | None = None
     slave_id: int | None = None
+    fault: MotorFault | None = None
 
 
 class DamiaoProtocol:
@@ -233,6 +234,7 @@ class DamiaoProtocol:
                 can_id=can_id,
                 data=data,
                 route_ids=(route_id,),
+                fault=cls.decode_fault(data),
             )
 
         kind = "heartbeat" if can_resp == CanResp.HEARTBEAT else "can_result"
@@ -251,3 +253,12 @@ class DamiaoProtocol:
             float(uint_to_float(vel_uint, -limits.VEL_MAX, limits.VEL_MAX, 12)),
             float(uint_to_float(torque_uint, -limits.TORQUE_MAX, limits.TORQUE_MAX, 12)),
         )
+
+    @classmethod
+    def decode_fault(cls, data: bytes) -> MotorFault | None:
+        """从状态 payload 中解码故障码。"""
+        fault_code = (data[0] >> 4) & 0x0F
+        try:
+            return MotorFault(fault_code)
+        except ValueError:
+            return None

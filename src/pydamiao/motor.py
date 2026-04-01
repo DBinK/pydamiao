@@ -6,7 +6,7 @@ import time
 from pydamiao.bus import SerialBus
 from pydamiao.protocol import DamiaoProtocol, ParsedMessage
 from pydamiao.result import Result
-from pydamiao.types import ControlMode, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
+from pydamiao.types import ControlMode, MotorFault, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
 
 
 class Motor:
@@ -36,6 +36,7 @@ class Motor:
         self.vel = 0.0
         self.torque = 0.0
         self.enabled = False
+        self.fault: MotorFault | None = None
         self.control_mode: ControlMode | None = None
         self.param_cache: dict[int, float | int] = {}
         self.last_update_time: float | None = None
@@ -113,7 +114,9 @@ class Motor:
     def clear_error(self) -> Result[None]:
         """清除错误 (过热等错误)"""
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.CLEAN_ERROR_CMD))
-        return Result(error="clear_error is not supported by the current protocol implementation", code="unsupported")
+        with self._state_lock:
+            self.fault = MotorFault.NONE
+        return Result()
 
     def set_mode(self, mode: ControlMode, timeout: float = 1.0) -> Result[ControlMode]:
         """切换电机控制模式。
@@ -149,6 +152,9 @@ class Motor:
             torque: 前馈力矩命令。
             auto_switch_mode: 是否自动切换到 MIT 模式。
         """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
         mode_result = self._prepare_control_mode(ControlMode.MIT, auto_switch_mode)
         if not mode_result:
             return mode_result
@@ -173,6 +179,9 @@ class Motor:
             vel: 目标速度，单位 rad/s。
             auto_switch_mode: 是否自动切换到 POS_VEL 模式。
         """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
         mode_result = self._prepare_control_mode(ControlMode.POS_VEL, auto_switch_mode)
         if not mode_result:
             return mode_result
@@ -186,6 +195,9 @@ class Motor:
             vel: 目标速度，单位 rad/s。
             auto_switch_mode: 是否自动切换到 VEL 模式。
         """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
         mode_result = self._prepare_control_mode(ControlMode.VEL, auto_switch_mode)
         if not mode_result:
             return mode_result
@@ -207,6 +219,9 @@ class Motor:
             current: 电机协议要求的电流或力矩项。
             auto_switch_mode: 是否自动切换到 TORQUE_POS 模式。
         """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
         mode_result = self._prepare_control_mode(ControlMode.TORQUE_POS, auto_switch_mode)
         if not mode_result:
             return mode_result
@@ -300,6 +315,13 @@ class Motor:
             return Result(error=result.error or "Failed to switch control mode", code=result.code or "error")
         return Result()
 
+    def _ensure_no_fault(self) -> Result[None]:
+        with self._state_lock:
+            fault = self.fault
+        if fault is None or fault == MotorFault.NONE:
+            return Result()
+        return Result(error=f"Motor is in fault state: {fault.name}", code="fault")
+
     def _wait_for_feedback(self, command: bytes, timeout: float) -> Result[ParsedMessage]:
         """发送命令并等待属于当前电机的任意反馈。"""
         return self.bus.request(
@@ -322,6 +344,9 @@ class Motor:
                 self.pos = pos
                 self.vel = vel
                 self.torque = torque
+                self.fault = message.fault
+                if message.fault not in (None, MotorFault.NONE):
+                    self.enabled = False
                 self.last_update_time = time.time()
             return
 
