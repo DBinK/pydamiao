@@ -14,7 +14,7 @@ class ParsedMessage:
     """表示一帧从串口桥接层解码后的消息。"""
 
     kind: str
-    can_resp: CanResp
+    can_cmd: CanResp
     can_id: Hex
     data: bytes
     route_ids: tuple[int, ...] = ()
@@ -39,6 +39,7 @@ class DamiaoProtocol:
     ENABLE_CMD = 0xFC
     DISABLE_CMD = 0xFD
     SET_ZERO_CMD = 0xFE
+    CLEAN_ERROR_CMD = 0xFB
 
     POS_VEL_BASE_ID = 0x100
     VEL_BASE_ID = 0x200
@@ -216,7 +217,7 @@ class DamiaoProtocol:
                     route_ids = (slave_id,)
                 return ParsedMessage(
                     kind="param",
-                    can_resp=can_resp,
+                    can_cmd=can_resp,
                     can_id=can_id,
                     data=data,
                     route_ids=route_ids,
@@ -228,7 +229,7 @@ class DamiaoProtocol:
             route_id = can_id if can_id != 0 else data[0] & 0x0F
             return ParsedMessage(
                 kind="status",
-                can_resp=can_resp,
+                can_cmd=can_resp,
                 can_id=can_id,
                 data=data,
                 route_ids=(route_id,),
@@ -236,7 +237,7 @@ class DamiaoProtocol:
 
         kind = "heartbeat" if can_resp == CanResp.HEARTBEAT else "can_result"
         route_ids = tuple(motor_id for motor_id in (can_id,) if motor_id != 0)
-        return ParsedMessage(kind=kind, can_resp=can_resp, can_id=can_id, data=data, route_ids=route_ids)
+        return ParsedMessage(kind=kind, can_cmd=can_resp, can_id=can_id, data=data, route_ids=route_ids)
 
     @classmethod
     def decode_status(cls, data: bytes, limits: MotorLimits) -> tuple[float, float, float]:

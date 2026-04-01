@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from time import time
+import time
 
 from pydamiao.bus import SerialBus
 from pydamiao.protocol import DamiaoProtocol, ParsedMessage
@@ -87,11 +87,23 @@ class Motor:
         return Result()
 
     def disable(self) -> Result[None]:
-        """失能电机。"""
-        self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.DISABLE_CMD))
-        with self._state_lock:
-            self.enabled = False
-        return Result()
+        """失能电机，并等待速度降到很小的阈值以下。"""
+        deadline = time.monotonic() + 1.0
+        command = DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.DISABLE_CMD)
+
+        while True:  # (安全性) 尝试失能电机, 直到速度降到阈值以下 (达妙没有失能/失能的状态反馈)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return Result(error="Motor did not slow down to the target threshold in time", code="disable_timeout")
+
+            result = self._wait_for_feedback(command, timeout=min(0.05, remaining))
+            with self._state_lock:
+                self.enabled = False
+
+            if result:
+                state = self.get_state()
+                if abs(state.vel) <= 0.02:
+                    return Result()
 
     def set_zero(self) -> Result[None]:
         """把当前位置设置为电机零点。"""
@@ -99,7 +111,8 @@ class Motor:
         return Result()
 
     def clear_error(self) -> Result[None]:
-        """TODO:待实现"""
+        """清除错误 (过热等错误)"""
+        self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.CLEAN_ERROR_CMD))
         return Result(error="clear_error is not supported by the current protocol implementation", code="unsupported")
 
     def set_mode(self, mode: ControlMode, timeout: float = 1.0) -> Result[ControlMode]:
@@ -271,7 +284,7 @@ class Motor:
         return Result(returned)
 
     def save_params(self) -> Result[None]:
-        """把当前参数集保存到电机 flash。"""
+        """把当前参数集保存到电机 flash, 官方文档称不可高频调用, flash 寿命约1万次"""
         self.disable()
         self.bus.send(DamiaoProtocol.encode_save_params(self.slave_id))
         return Result()
@@ -287,6 +300,14 @@ class Motor:
             return Result(error=result.error or "Failed to switch control mode", code=result.code or "error")
         return Result()
 
+    def _wait_for_feedback(self, command: bytes, timeout: float) -> Result[ParsedMessage]:
+        """发送命令并等待属于当前电机的任意反馈。"""
+        return self.bus.request(
+            command,
+            matcher=self._matches_message,
+            timeout=timeout,
+        )
+
     def _matches_message(self, message: ParsedMessage) -> bool:
         if self.slave_id in message.route_ids:
             return True
@@ -301,14 +322,14 @@ class Motor:
                 self.pos = pos
                 self.vel = vel
                 self.torque = torque
-                self.last_update_time = time()
+                self.last_update_time = time.time()
             return
 
         if message.kind == "param" and message.reg_id is not None:
             with self._state_lock:
                 if message.value is not None:
                     self.param_cache[message.reg_id] = message.value
-                    self.last_update_time = time()
+                    self.last_update_time = time.time()
 
 
 class MotorManager:

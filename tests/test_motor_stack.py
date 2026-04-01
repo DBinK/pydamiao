@@ -94,6 +94,16 @@ def feed_later(fake_serial: FakeSerial, frame: bytes, delay: float = 0.02) -> No
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def feed_many_later(fake_serial: FakeSerial, frames: list[bytes], delay: float = 0.02, step: float = 0.02) -> None:
+    def _worker() -> None:
+        time.sleep(delay)
+        for frame in frames:
+            fake_serial.feed(frame)
+            time.sleep(step)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def test_motor_refresh_state_uses_background_receiver():
     fake_serial = FakeSerial()
     bus = SerialBus(fake_serial, timeout=0.01)
@@ -188,6 +198,42 @@ def test_motor_timeout_and_unsupported_paths_return_result_errors():
         assert timeout_result.code == "timeout"
         assert not unsupported_result.ok
         assert unsupported_result.code == "unsupported"
+    finally:
+        bus.close()
+
+
+def test_disable_retries_until_velocity_is_small_enough():
+    fake_serial = FakeSerial()
+    bus = SerialBus(fake_serial, timeout=0.01)
+    motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16)
+
+    try:
+        feed_later(
+            fake_serial,
+            make_rx_frame(
+                CanResp.RECEIVE_SUCCESS,
+                0x16,
+                make_status_payload(pos=0.0, vel=1.0, torque=0.0, source_id=0x06),
+            ),
+            delay=0.01,
+        )
+        feed_later(
+            fake_serial,
+            make_rx_frame(
+                CanResp.RECEIVE_SUCCESS,
+                0x16,
+                make_status_payload(pos=0.0, vel=0.0005, torque=0.0, source_id=0x06),
+            ),
+            delay=0.08,
+        )
+
+        result = motor.disable()
+
+        assert result.ok
+        disable_frame = DamiaoProtocol.encode_basic_command(0x06, DamiaoProtocol.DISABLE_CMD)
+        assert fake_serial.writes.count(disable_frame) >= 2
+        assert set(fake_serial.writes) == {disable_frame}
+        assert motor.enabled is False
     finally:
         bus.close()
 

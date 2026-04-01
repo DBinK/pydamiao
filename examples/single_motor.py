@@ -31,3 +31,4 @@ for _ in range(100):
 
     time.sleep(0.01)
 
+motor.disable()
