@@ -8,12 +8,11 @@ from pydamiao.utils import (
     float_to_uint,
     uint_to_float,
     float_to_uint8s,
-    data_to_uint8s,
+    int_to_uint8s,
     is_in_ranges,
     uint8s_to_uint32,
     uint8s_to_float,
     print_hex,
-    get_enum_by_index
 )
 
 
@@ -102,7 +101,7 @@ class TestDataToUint8s:
     def test_valid_uint32_values(self):
         test_values = [0, 1, 0xFFFFFFFF, 0x12345678]
         for value in test_values:
-            result = data_to_uint8s(value)
+            result = int_to_uint8s(value)
             assert len(result) == 4
             # Verify by converting back
             packed_back = pack('4B', *result)
@@ -113,7 +112,7 @@ class TestDataToUint8s:
         invalid_values = [-1, 0x100000000, 1.5, "string"]
         for value in invalid_values:
             with pytest.raises(ValueError):
-                data_to_uint8s(value)
+                int_to_uint8s(value)
 
 
 class TestIsInRanges:
@@ -134,7 +133,7 @@ class TestIsInRanges:
         # Test values outside all ranges
         invalid_values = [0, 1, 6, 11, 12, 17, 34, 37, 100]
         for value in invalid_values:
-            assert is_in_ranges(value)
+            assert not is_in_ranges(value)
 
 
 class TestUint8sToUint32:
@@ -170,21 +169,3 @@ class TestPrintHex:
         captured = capsys.readouterr()
         assert captured.out.strip() == "12 34 AB CD"
 
-
-class TestGetEnumByIndex:
-    def test_with_valid_enum(self):
-        # Create a simple test enum
-        from enum import IntEnum
-        
-        class TestEnum(IntEnum):
-            FIRST = 1
-            SECOND = 2
-            THIRD = 3
-        
-        # Test valid indices
-        assert get_enum_by_index(1, TestEnum) == TestEnum.FIRST
-        assert get_enum_by_index(2, TestEnum) == TestEnum.SECOND
-        assert get_enum_by_index(3, TestEnum) == TestEnum.THIRD
-        
-        # Test invalid index
-        assert get_enum_by_index(999, TestEnum) is None

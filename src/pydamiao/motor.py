@@ -1,13 +1,12 @@
 # src/pydamiao/motor.py
 from time import sleep
-from typing import TypeAlias
 
 import numpy as np
 from serial import Serial
 
-from pydamiao.types import ControlMode, MotorType, MotorReg, MotorLimits, MOTOR_LIMITS
+from pydamiao.types import Hex, ControlMode, MotorType, MotorReg, MotorLimits, MOTOR_LIMITS
 from pydamiao.utils import (
-    data_to_uint8s,
+    int_to_uint8s,
     float_to_uint,
     float_to_uint8s,
     is_in_ranges,
@@ -15,8 +14,6 @@ from pydamiao.utils import (
     uint8s_to_uint32,
     uint_to_float,
 )
-
-Hex: TypeAlias = int
 
 class Motor:
     def __init__(self, motor_type: MotorType, slave_id: Hex, master_id: Hex):
@@ -99,6 +96,10 @@ class MotorControl:
         ], 
         dtype=np.uint8)  # fmt: off
 
+    # ==============================================================================
+    # 初始化与电机管理
+    # ==============================================================================
+
     def __init__(self, serial_device: Serial):
         """
         define MotorControl object 定义电机控制对象
@@ -121,6 +122,57 @@ class MotorControl:
         if motor.master_id != 0:
             self.motors_map[motor.master_id] = motor
         return True
+
+
+    # ==============================================================================
+    # 基础控制命令
+    # ==============================================================================
+
+    def enable(self, motor: Motor):
+        """
+        enable motor 使能电机
+        最好在上电后几秒后再使能电机
+        :param motor: Motor object 电机对象
+        """
+        self.__control_cmd(motor, np.uint8(0xFC))
+        sleep(0.1)
+        self.recv()  # receive the data from serial port
+
+    def enable_old(self, motor: Motor, control_mode: ControlMode):
+        """
+        enable motor old firmware 使能电机旧版本固件，这个是为了旧版本电机固件的兼容性
+        可恶的旧版本固件使能需要加上偏移量
+        最好在上电后几秒后再使能电机
+        :param motor: Motor object 电机对象
+        """
+        tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC], np.uint8)
+        enable_id = ((int(control_mode) - 1) << 2) + motor.slave_id
+        self.__send_data(enable_id, tx_buf)
+        sleep(0.1)
+        self.recv()  # receive the data from serial port
+
+    def disable(self, motor: Motor):
+        """
+        disable motor 失能电机
+        :param motor: Motor object 电机对象
+        """
+        self.__control_cmd(motor, np.uint8(0xFD))
+        sleep(0.1)
+        self.recv()  # receive the data from serial port
+
+    def set_zero_position(self, motor: Motor):
+        """
+        set the zero position of the motor 设置电机0位
+        :param motor: Motor object 电机对象
+        """
+        self.__control_cmd(motor, np.uint8(0xFE))
+        sleep(0.1)
+        self.recv()  # receive the data from serial port
+
+
+    # ==============================================================================
+    # 控制模式函数
+    # ==============================================================================
 
     def control_mit(
         self, motor: Motor, kp: float, kd: float, pos_cmd: float, vel_cmd: float, tau_cmd: float
@@ -160,7 +212,7 @@ class MotorControl:
         self.__send_data(motor.slave_id, tx_buf)
         self.recv()  # receive the data from serial port
 
-    def control_delay(
+    def control_mit_delay(
         self, motor: Motor, kp: float, kd: float, pos_cmd: float, vel_cmd: float, tau_cmd: float,
         delay: float,
     ):
@@ -238,49 +290,15 @@ class MotorControl:
         self.__send_data(motor_id, tx_buf)
         self.recv()  # receive the data from serial port
 
-    def enable(self, motor: Motor):
-        """
-        enable motor 使能电机
-        最好在上电后几秒后再使能电机
-        :param motor: Motor object 电机对象
-        """
-        self.__control_cmd(motor, np.uint8(0xFC))
-        sleep(0.1)
-        self.recv()  # receive the data from serial port
 
-    def enable_old(self, motor: Motor, control_mode: ControlMode):
-        """
-        enable motor old firmware 使能电机旧版本固件，这个是为了旧版本电机固件的兼容性
-        可恶的旧版本固件使能需要加上偏移量
-        最好在上电后几秒后再使能电机
-        :param motor: Motor object 电机对象
-        """
-        tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC], np.uint8)
-        enable_id = ((int(control_mode) - 1) << 2) + motor.slave_id
-        self.__send_data(enable_id, tx_buf)
-        sleep(0.1)
-        self.recv()  # receive the data from serial port
-
-    def disable(self, motor: Motor):
-        """
-        disable motor 失能电机
-        :param motor: Motor object 电机对象
-        """
-        self.__control_cmd(motor, np.uint8(0xFD))
-        sleep(0.1)
-        self.recv()  # receive the data from serial port
-
-    def set_zero_position(self, motor: Motor):
-        """
-        set the zero position of the motor 设置电机0位
-        :param motor: Motor object 电机对象
-        """
-        self.__control_cmd(motor, np.uint8(0xFE))
-        sleep(0.1)
-        self.recv()  # receive the data from serial port
+    # ==============================================================================
+    # 参数管理
+    # ==============================================================================
 
 
-    ####### 辅助函数 #######
+    # ==============================================================================
+    # 数据收发与处理（底层辅助）
+    # ==============================================================================
 
     def recv(self):
         """
@@ -369,21 +387,16 @@ class MotorControl:
                     master_id = slave_id
 
             reg_id = data[3]
+
             # 读取参数得到的数据
-            if is_in_ranges(reg_id):
+            if MotorReg.is_int_type(reg_id):
                 # uint32类型
                 num = uint8s_to_uint32(data[4], data[5], data[6], data[7])
                 self.motors_map[master_id].param_cache[reg_id] = num
-
             else:
                 # float类型
                 num = uint8s_to_float(data[4], data[5], data[6], data[7])
                 self.motors_map[master_id].param_cache[reg_id] = num
-
-
-    def __control_cmd(self, motor: Motor, cmd: np.uint8):
-        tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, cmd], np.uint8)
-        self.__send_data(motor.slave_id, tx_buf)
 
     def __send_data(self, motor_id: Hex, data: np.ndarray) -> None:
         """
@@ -396,6 +409,10 @@ class MotorControl:
         self.tx_frame[14] = (motor_id >> 8) & 0xFF  # id high 8 bits
         self.tx_frame[21:29] = data
         self.serial.write(bytes(self.tx_frame.T))
+
+    def __control_cmd(self, motor: Motor, cmd: np.uint8):
+        tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, cmd], np.uint8)
+        self.__send_data(motor.slave_id, tx_buf)
 
     def __read_motor_param(self, motor: Motor, reg_id: MotorReg):
         can_id_l = motor.slave_id & 0xFF  # id low 8 bits
@@ -415,7 +432,7 @@ class MotorControl:
         )
         self.__send_data(0x7FF, tx_buf)
 
-    def __write_motor_param(self, motor: Motor, reg_id: MotorReg, data):
+    def __write_motor_param(self, motor: Motor, reg_id: MotorReg, data: float | int):
         can_id_l = motor.slave_id & 0xFF  # id low 8 bits
         can_id_h = (motor.slave_id >> 8) & 0xFF  # id high 8 bits
         tx_buf = np.array(
@@ -431,45 +448,86 @@ class MotorControl:
             ],
             np.uint8,
         )
-        if not is_in_ranges(reg_id):
+        if not MotorReg.is_int_type(reg_id):
             # data is float
             tx_buf[4:8] = float_to_uint8s(data)
         else:
             # data is int
-            tx_buf[4:8] = data_to_uint8s(int(data))
+            tx_buf[4:8] = int_to_uint8s(int(data))
         self.__send_data(0x7FF, tx_buf)
 
-    def switch_control_mode(self, motor: Motor, control_mode: ControlMode):
+
+    def refresh_motor_status(self, motor: Motor):
         """
-        switch the control mode of the motor 切换电机控制模式
+        get the motor status 获得电机状态
+        """
+        can_id_l = motor.slave_id & 0xFF  # id low 8 bits
+        can_id_h = (motor.slave_id >> 8) & 0xFF  # id high 8 bits
+        tx_buf = np.array(
+            [
+                np.uint8(can_id_l),
+                np.uint8(can_id_h),
+                0xCC,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+            ],
+            np.uint8,
+        )
+        self.__send_data(0x7FF, tx_buf)
+        self.recv()  # receive the data from serial port
+
+    def read_motor_param(self, motor: Motor, reg_id: MotorReg):
+        """
+        read only the reg_id of the motor 读取电机的内部信息例如 版本号等
         :param motor: Motor object 电机对象
-        :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
+        :param reg_id: DM_variable 电机参数
+        :return: 电机参数的值
         """
         max_retries = 20
-        retry_interval = 0.1  # retry times
-        # reg_id = 10
-        reg_id = MotorReg.CTRL_MODE
-        self.__write_motor_param(motor, reg_id, np.uint8(control_mode))
+        retry_interval = 0.05  # retry times
+        self.__read_motor_param(motor, reg_id)
         for _ in range(max_retries):
             sleep(retry_interval)
             self.recv_set_param_data()
             if motor.slave_id in self.motors_map:
                 if reg_id in self.motors_map[motor.slave_id].param_cache:
-                    if (
-                        abs(
-                            self.motors_map[motor.slave_id].param_cache[reg_id]
-                            - control_mode
-                        )
-                        < 0.1
-                    ):
-                        return True
-                    else:
-                        return False
+                    return self.motors_map[motor.slave_id].param_cache[reg_id]
+        return None
+
+    def change_motor_param(self, motor: Motor, reg_id: MotorReg, data: float | int):
+        """
+        change the reg_id of the motor 改变电机的参数
+        :param motor: Motor object 电机对象
+        :param reg_id: DM_variable 电机参数
+        :param data: 电机参数的值
+        :return: True or False ,True means success, False means fail
+        """
+        max_retries = 20
+        retry_interval = 0.05  # retry times
+
+        self.__write_motor_param(motor, reg_id, data)
+        for _ in range(max_retries):
+            self.recv_set_param_data()
+            if (
+                motor.slave_id in self.motors_map
+                and reg_id in self.motors_map[motor.slave_id].param_cache
+            ):
+                if (
+                    abs(self.motors_map[motor.slave_id].param_cache[reg_id] - data)
+                    < 0.1
+                ):
+                    return True
+                else:
+                    return False
+            sleep(retry_interval)
         return False
 
     def save_motor_param(self, motor: Motor):
         """
-        save the all parameter  to flash 保存所有电机参数
+        save the all parameter to flash 保存所有电机参数
         :param motor: Motor object 电机对象
         :return:
         """
@@ -501,73 +559,32 @@ class MotorControl:
         :param TMAX: 电机的TMAX
         :return:
         """
-        
         MOTOR_LIMITS[motor_type] = MotorLimits(PMAX, VMAX, TMAX)
-
-    def refresh_motor_status(self, motor: Motor):
+        
+    def switch_control_mode(self, motor: Motor, control_mode: ControlMode):
         """
-        get the motor status 获得电机状态
-        """
-        can_id_l = motor.slave_id & 0xFF  # id low 8 bits
-        can_id_h = (motor.slave_id >> 8) & 0xFF  # id high 8 bits
-        tx_buf = np.array(
-            [
-                np.uint8(can_id_l),
-                np.uint8(can_id_h),
-                0xCC,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ],
-            np.uint8,
-        )
-        self.__send_data(0x7FF, tx_buf)
-        self.recv()  # receive the data from serial port
-
-    def change_motor_param(self, motor: Motor, reg_id: MotorReg, data):
-        """
-        change the reg_id of the motor 改变电机的参数
+        switch the control mode of the motor 切换电机控制模式
         :param motor: Motor object 电机对象
-        :param reg_id: DM_variable 电机参数
-        :param data: 电机参数的值
-        :return: True or False ,True means success, False means fail
+        :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
         """
         max_retries = 20
-        retry_interval = 0.05  # retry times
-
-        self.__write_motor_param(motor, reg_id, data)
-        for _ in range(max_retries):
-            self.recv_set_param_data()
-            if (
-                motor.slave_id in self.motors_map
-                and reg_id in self.motors_map[motor.slave_id].param_cache
-            ):
-                if (
-                    abs(self.motors_map[motor.slave_id].param_cache[reg_id] - data)
-                    < 0.1
-                ):
-                    return True
-                else:
-                    return False
-            sleep(retry_interval)
-        return False
-
-    def read_motor_param(self, motor: Motor, reg_id: MotorReg):
-        """
-        read only the reg_id of the motor 读取电机的内部信息例如 版本号等
-        :param motor: Motor object 电机对象
-        :param reg_id: DM_variable 电机参数
-        :return: 电机参数的值
-        """
-        max_retries = 20
-        retry_interval = 0.05  # retry times
-        self.__read_motor_param(motor, reg_id)
+        retry_interval = 0.1  # retry times
+        # reg_id = 10
+        reg_id = MotorReg.CTRL_MODE
+        self.__write_motor_param(motor, reg_id, control_mode)
         for _ in range(max_retries):
             sleep(retry_interval)
             self.recv_set_param_data()
             if motor.slave_id in self.motors_map:
                 if reg_id in self.motors_map[motor.slave_id].param_cache:
-                    return self.motors_map[motor.slave_id].param_cache[reg_id]
-        return None
+                    if (
+                        abs(
+                            self.motors_map[motor.slave_id].param_cache[reg_id]
+                            - control_mode
+                        )
+                        < 0.1
+                    ):
+                        return True
+                    else:
+                        return False
+        return False

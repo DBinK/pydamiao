@@ -1,7 +1,10 @@
 # src/pydamiao/types.py
 
 from enum import IntEnum
-from typing import NamedTuple
+from typing import NamedTuple, TypeAlias
+
+# 类型别名
+Hex: TypeAlias = int
 
 # 电机类型
 class MotorType(IntEnum):
@@ -23,8 +26,7 @@ class MotorLimits(NamedTuple):
     VEL_MAX: float  # 角速度限制 (弧度/秒)
     TAU_MAX: float  # 力矩限制 (牛·米)
 
-# 电机限制参数 - 每个电机型号对应的 [Q_MAX, DQ_MAX, TAU_MAX]
-
+# 电机限制参数 - 每个电机型号对应的 [POS_MAX, VEL_MAX, TAU_MAX]
 MOTOR_LIMITS = {
     MotorType.DM4310: MotorLimits(12.5, 30, 10),
     MotorType.DM4310_48V: MotorLimits(12.5, 50, 10),
@@ -87,6 +89,14 @@ class MotorReg(IntEnum):
     dir = 55
     p_m = 80
     xout = 81
+    
+    @staticmethod
+    def is_int_type(reg_id: int) -> bool:
+        """
+        这是一个规则函数, 判断某个电机寄存器处对应的值需要的类型, 是否为整数, 否则为浮点数
+        """
+        return (7 <= reg_id <= 10) or (13 <= reg_id <= 16) or (35 <= reg_id <= 36)
+
 
 # 控制模式枚举
 class ControlMode(IntEnum):
