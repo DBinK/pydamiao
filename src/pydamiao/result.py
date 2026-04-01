@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -19,7 +19,7 @@ class Result(Generic[T]):
     def expect(self, message: str | None = None) -> T:
         if self.error is not None:
             raise RuntimeError(message or self.error)
-        return self.value
+        return cast(T, self.value)
 
     def __bool__(self) -> bool:
         return self.error is None

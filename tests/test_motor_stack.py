@@ -108,11 +108,12 @@ def test_motor_refresh_state_uses_background_receiver():
         feed_later(fake_serial, frame)
 
         result = motor.refresh_state(timeout=0.2)
+        state = result.expect()
 
         assert result.ok
-        assert result.value.pos == pytest.approx(1.2, abs=0.02)
-        assert result.value.vel == pytest.approx(-2.0, abs=0.05)
-        assert result.value.torque == pytest.approx(0.8, abs=0.05)
+        assert state.pos == pytest.approx(1.2, abs=0.02)
+        assert state.vel == pytest.approx(-2.0, abs=0.05)
+        assert state.torque == pytest.approx(0.8, abs=0.05)
         assert motor.get_position() == pytest.approx(1.2, abs=0.02)
         assert motor.last_update_time is not None
     finally:

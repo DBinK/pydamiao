@@ -233,8 +233,9 @@ class Motor:
 
         if message.kind == "param" and message.reg_id is not None:
             with self._state_lock:
-                self.param_cache[message.reg_id] = message.value
-                self.last_update_time = time()
+                if message.value is not None:
+                    self.param_cache[message.reg_id] = message.value
+                    self.last_update_time = time()
 
 
 class MotorManager:

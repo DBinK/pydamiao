@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Empty, Queue
 import threading
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Protocol
 
 from serial import Serial, SerialException
 
@@ -14,10 +14,20 @@ if TYPE_CHECKING:
     from pydamiao.motor import Motor
 
 
+class SerialPortLike(Protocol):
+    @property
+    def is_open(self) -> bool: ...
+
+    def open(self) -> None: ...
+    def close(self) -> None: ...
+    def write(self, data: bytes, /) -> int | None: ...
+    def read(self, size: int = 1) -> bytes: ...
+
+
 class SerialBus:
     def __init__(
         self,
-        port: str | Serial,
+        port: str | SerialPortLike,
         baudrate: int = 921600,
         timeout: float = 0.01,
         read_size: int = 64,
@@ -42,10 +52,10 @@ class SerialBus:
         if auto_start:
             self.start()
 
-    def _open_serial(self, port: str | Serial, baudrate: int, timeout: float) -> Serial:
+    def _open_serial(self, port: str | SerialPortLike, baudrate: int, timeout: float) -> SerialPortLike:
         if not isinstance(port, str):
             serial_device = port
-            serial_device.timeout = timeout
+            setattr(serial_device, "timeout", timeout)
             if not serial_device.is_open:
                 serial_device.open()
             return serial_device
