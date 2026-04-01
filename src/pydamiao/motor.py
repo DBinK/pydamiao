@@ -4,12 +4,11 @@ from time import sleep
 import numpy as np
 from serial import Serial
 
-from pydamiao.types import Hex, ControlMode, MotorType, MotorReg, MotorLimits, MOTOR_LIMITS
+from pydamiao.types import Hex, ControlMode, MotorType, MotorReg, MotorLimits, MOTOR_LIMITS, CanResp
 from pydamiao.utils import (
     int_to_uint8s,
     float_to_uint,
     float_to_uint8s,
-    is_in_ranges,
     uint8s_to_float,
     uint8s_to_uint32,
     uint_to_float,
@@ -125,7 +124,7 @@ class MotorControl:
 
 
     # ==============================================================================
-    # 基础控制命令
+    # 电机模式控制命令
     # ==============================================================================
 
     def enable(self, motor: Motor):
@@ -134,7 +133,7 @@ class MotorControl:
         最好在上电后几秒后再使能电机
         :param motor: Motor object 电机对象
         """
-        self.__control_cmd(motor, np.uint8(0xFC))
+        self.__state_cmd(motor, np.uint8(0xFC))
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
@@ -156,7 +155,7 @@ class MotorControl:
         disable motor 失能电机
         :param motor: Motor object 电机对象
         """
-        self.__control_cmd(motor, np.uint8(0xFD))
+        self.__state_cmd(motor, np.uint8(0xFD))
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
@@ -165,13 +164,13 @@ class MotorControl:
         set the zero position of the motor 设置电机0位
         :param motor: Motor object 电机对象
         """
-        self.__control_cmd(motor, np.uint8(0xFE))
+        self.__state_cmd(motor, np.uint8(0xFE))
         sleep(0.1)
         self.recv()  # receive the data from serial port
 
 
     # ==============================================================================
-    # 控制模式函数
+    # 各控制模式函数
     # ==============================================================================
 
     def control_mit(
@@ -312,9 +311,9 @@ class MotorControl:
         packets = self.__extract_packets(data_recv)
         for packet in packets:
             data = packet[7:15]
-            CANID = (packet[6] << 24) | (packet[5] << 16) | (packet[4] << 8) | packet[3]
-            CMD = packet[1]
-            self.__process_packet(data, CANID, CMD)
+            can_id = (packet[6] << 24) | (packet[5] << 16) | (packet[4] << 8) | packet[3]
+            can_cmd = CanResp(packet[1])
+            self.__process_packet(data, can_id, can_cmd)
 
     def recv_set_param_data(self):
         """
@@ -326,9 +325,9 @@ class MotorControl:
         packets = self.__extract_packets(data_recv)
         for packet in packets:
             data = packet[7:15]
-            CANID = (packet[6] << 24) | (packet[5] << 16) | (packet[4] << 8) | packet[3]
-            CMD = packet[1]
-            self.__process_set_param_packet(data, CANID, CMD)
+            can_id = (packet[6] << 24) | (packet[5] << 16) | (packet[4] << 8) | packet[3]
+            can_cmd = CanResp(packet[1])
+            self.__process_set_param_packet(data, can_id, can_cmd)
 
     def __extract_packets(self, data: bytes) -> list[bytes]:
         frames = []
@@ -349,8 +348,8 @@ class MotorControl:
         self.rx_buf = data[remainder_pos:]
         return frames
 
-    def __process_packet(self, data: bytes, can_id: Hex, CMD: Hex) -> None:
-        if CMD == 0x11:
+    def __process_packet(self, data: bytes, can_id: Hex, can_cmd: CanResp) -> None:
+        if can_cmd == CanResp.RECEIVE_SUCCESS:  # CAN 命令 //00 心跳, 0x01 接收失败, 0x11 接收成功, 0x02 发送失败, 0x12 发送成功 0x03 
             # Determine target motor ID
             if can_id != 0x00:
                 target_id = can_id
@@ -373,8 +372,9 @@ class MotorControl:
                 self.motors_map[target_id].recv_data(
                     float(recv_pos), float(recv_vel), float(recv_tau)
                 )
-    def __process_set_param_packet(self, data: bytes, can_id: Hex, CMD: Hex) -> None:
-        if CMD == 0x11 and (data[2] == 0x33 or data[2] == 0x55):
+
+    def __process_set_param_packet(self, data: bytes, can_id: Hex, can_cmd: CanResp) -> None:
+        if can_cmd == CanResp.RECEIVE_SUCCESS and (data[2] == 0x33 or data[2] == 0x55):
             master_id = can_id
             slave_id = (data[1] << 8) | data[0]
             if can_id == 0x00:  # 防止有人把master_id设为0稳一手
@@ -410,8 +410,8 @@ class MotorControl:
         self.tx_frame[21:29] = data
         self.serial.write(bytes(self.tx_frame.T))
 
-    def __control_cmd(self, motor: Motor, cmd: np.uint8):
-        tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, cmd], np.uint8)
+    def __state_cmd(self, motor: Motor, state_cmd: np.uint8):
+        tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, state_cmd], np.uint8)
         self.__send_data(motor.slave_id, tx_buf)
 
     def __read_motor_param(self, motor: Motor, reg_id: MotorReg):

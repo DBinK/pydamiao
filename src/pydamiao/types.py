@@ -104,3 +104,20 @@ class ControlMode(IntEnum):
     POS_VEL = 2
     VEL = 3
     TORQUE_POS = 4
+
+
+# CAN 命令反馈枚举
+class CanResp(IntEnum):
+    #! 注意: 在官方文档的 CAN接收数据帧格式 中, 本字段被称为 CAN 命令
+    HEARTBEAT = 0x00        # 心跳
+
+    RECEIVE_FAILED = 0x01   # 数据接收失败
+    RECEIVE_SUCCESS = 0x11  # 数据接收成功，包含有效数据
+
+    SEND_FAILED = 0x02      # 数据发送失败
+    SEND_SUCCESS = 0x12     # 数据发送成功
+
+    BAUD_RATE_SET_FAILED = 0x03  # 波特率设置失败
+    BAUD_RATE_SET_SUCCESS = 0x13  # 波特率设置成功
+
+    COMM_ERROR = 0xEE       # 通讯错误信息
