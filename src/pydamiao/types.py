@@ -4,7 +4,7 @@ from enum import IntEnum
 from typing import NamedTuple
 
 # 电机类型
-class DamiaoMotorType(IntEnum):
+class MotorType(IntEnum):
     DM4310 = 0
     DM4310_48V = 1
     DM4340 = 2
@@ -19,29 +19,29 @@ class DamiaoMotorType(IntEnum):
     DMG6220 = 11
 
 class MotorLimits(NamedTuple):
-    Q_MAX: float   # 位置限制 (弧度)
-    DQ_MAX: float  # 角速度限制 (弧度/秒)
-    TAU_MAX: float # 力矩限制 (牛·米)
+    POS_MAX: float  # 位置限制 (弧度)
+    VEL_MAX: float  # 角速度限制 (弧度/秒)
+    TAU_MAX: float  # 力矩限制 (牛·米)
 
 # 电机限制参数 - 每个电机型号对应的 [Q_MAX, DQ_MAX, TAU_MAX]
 
 MOTOR_LIMITS = {
-    DamiaoMotorType.DM4310: MotorLimits(12.5, 30, 10),
-    DamiaoMotorType.DM4310_48V: MotorLimits(12.5, 50, 10),
-    DamiaoMotorType.DM4340: MotorLimits(12.5, 8, 28),
-    DamiaoMotorType.DM4340_48V: MotorLimits(12.5, 10, 28),
-    DamiaoMotorType.DM6006: MotorLimits(12.5, 45, 20),
-    DamiaoMotorType.DM8006: MotorLimits(12.5, 45, 40),
-    DamiaoMotorType.DM8009: MotorLimits(12.5, 45, 54),
-    DamiaoMotorType.DM10010L: MotorLimits(12.5, 25, 200),
-    DamiaoMotorType.DM10010: MotorLimits(12.5, 20, 200),
-    DamiaoMotorType.DMH3510: MotorLimits(12.5, 280, 1),
-    DamiaoMotorType.DMH6215: MotorLimits(12.5, 45, 10),
-    DamiaoMotorType.DMG6220: MotorLimits(12.5, 45, 10),
+    MotorType.DM4310: MotorLimits(12.5, 30, 10),
+    MotorType.DM4310_48V: MotorLimits(12.5, 50, 10),
+    MotorType.DM4340: MotorLimits(12.5, 8, 28),
+    MotorType.DM4340_48V: MotorLimits(12.5, 10, 28),
+    MotorType.DM6006: MotorLimits(12.5, 45, 20),
+    MotorType.DM8006: MotorLimits(12.5, 45, 40),
+    MotorType.DM8009: MotorLimits(12.5, 45, 54),
+    MotorType.DM10010L: MotorLimits(12.5, 25, 200),
+    MotorType.DM10010: MotorLimits(12.5, 20, 200),
+    MotorType.DMH3510: MotorLimits(12.5, 280, 1),
+    MotorType.DMH6215: MotorLimits(12.5, 45, 10),
+    MotorType.DMG6220: MotorLimits(12.5, 45, 10),
 }
 
 # 电机参数枚举
-class MotorVariable(IntEnum):
+class MotorParam(IntEnum):
     UV_Value = 0
     KT_Value = 1
     OT_Value = 2
@@ -89,7 +89,7 @@ class MotorVariable(IntEnum):
     xout = 81
 
 # 控制模式枚举
-class ControlType(IntEnum):
+class ControlMode(IntEnum):
     MIT = 1
     POS_VEL = 2
     VEL = 3

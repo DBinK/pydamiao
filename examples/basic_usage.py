@@ -2,37 +2,37 @@ import math
 import time
 
 import serial
-from pydamiao.types import DamiaoMotorType, ControlType, MotorVariable
+from pydamiao.types import MotorType, ControlMode, MotorParam
 from pydamiao.motor import Motor, MotorControl
 
 # 创建电机对象和串口对象
-motor1 = Motor(DamiaoMotorType.DM4310, 0x06, 0x12)
-motor2 = Motor(DamiaoMotorType.DM4310, 0x05, 0x12)
+motor1 = Motor(MotorType.DM4310, 0x06, 0x12)
+motor2 = Motor(MotorType.DM4310, 0x05, 0x12)
 serial_device = serial.Serial("COM3", 921600, timeout=0.5)
 motor_control = MotorControl(serial_device)
 motor_control.add_motor(motor1)
 motor_control.add_motor(motor2)
 
 # 读取和修改电机参数示例
-if motor_control.switch_control_mode(motor1, ControlType.POS_VEL):
+if motor_control.switch_control_mode(motor1, ControlMode.POS_VEL):
     print("switch POS_VEL success")
-if motor_control.switch_control_mode(motor2, ControlType.VEL):
+if motor_control.switch_control_mode(motor2, ControlMode.VEL):
     print("switch VEL success")
 
-print("sub_ver:", motor_control.read_motor_param(motor1, MotorVariable.sub_ver))
-print("Gr:", motor_control.read_motor_param(motor1, MotorVariable.Gr))
+print("sub_ver:", motor_control.read_motor_param(motor1, MotorParam.sub_ver))
+print("Gr:", motor_control.read_motor_param(motor1, MotorParam.Gr))
 # if motor_control.change_motor_param(motor1, DM_variable.KP_APR, 54):
 #     print("write success")
-print("PMAX:", motor_control.read_motor_param(motor1, MotorVariable.PMAX))
-print("MST_ID:", motor_control.read_motor_param(motor1, MotorVariable.MST_ID))
-print("VMAX:", motor_control.read_motor_param(motor1, MotorVariable.VMAX))
-print("TMAX:", motor_control.read_motor_param(motor1, MotorVariable.TMAX))
+print("PMAX:", motor_control.read_motor_param(motor1, MotorParam.PMAX))
+print("MST_ID:", motor_control.read_motor_param(motor1, MotorParam.MST_ID))
+print("VMAX:", motor_control.read_motor_param(motor1, MotorParam.VMAX))
+print("TMAX:", motor_control.read_motor_param(motor1, MotorParam.TMAX))
 
 print("Motor2:")
-print("PMAX:", motor_control.read_motor_param(motor2, MotorVariable.PMAX))
-print("MST_ID:", motor_control.read_motor_param(motor2, MotorVariable.MST_ID))
-print("VMAX:", motor_control.read_motor_param(motor2, MotorVariable.VMAX))
-print("TMAX:", motor_control.read_motor_param(motor2, MotorVariable.TMAX))
+print("PMAX:", motor_control.read_motor_param(motor2, MotorParam.PMAX))
+print("MST_ID:", motor_control.read_motor_param(motor2, MotorParam.MST_ID))
+print("VMAX:", motor_control.read_motor_param(motor2, MotorParam.VMAX))
+print("TMAX:", motor_control.read_motor_param(motor2, MotorParam.TMAX))
 
 # 保存并使能电机
 # motor_control.enable(motor3)  # 如果 motor3 未定义，需注释或定义
