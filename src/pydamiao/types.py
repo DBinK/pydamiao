@@ -42,53 +42,60 @@ MOTOR_LIMITS = {
     MotorType.DMG6220: MotorLimits(12.5, 45, 10),
 }
 
-# 电机参数枚举
+# 电机寄存器参数枚举, 官方文档中称为 RID
 class MotorReg(IntEnum):
-    UV_Value = 0
-    KT_Value = 1
-    OT_Value = 2
-    OC_Value = 3
-    ACC = 4
-    DEC = 5
-    MAX_SPD = 6
-    MST_ID = 7
-    ESC_ID = 8
-    TIMEOUT = 9
-    CTRL_MODE = 10
-    Damp = 11
-    Inertia = 12
-    hw_ver = 13
-    sw_ver = 14
-    SN = 15
-    NPP = 16
-    Rs = 17
-    LS = 18
-    Flux = 19
-    Gr = 20
-    PMAX = 21
-    VMAX = 22
-    TMAX = 23
-    I_BW = 24
-    KP_ASR = 25
-    KI_ASR = 26
-    KP_APR = 27
-    KI_APR = 28
-    OV_Value = 29
-    GREF = 30
-    Deta = 31
-    V_BW = 32
-    IQ_c1 = 33
-    VL_c1 = 34
-    can_br = 35
-    sub_ver = 36
-    u_off = 50
-    v_off = 51
-    k1 = 52
-    k2 = 53
-    m_off = 54
-    dir = 55
-    p_m = 80
-    xout = 81
+    """
+    电机寄存器参数枚举, 官方文档中称为 RID
+    从固件的更新日志文档查询: https://gitee.com/kit-miao/motor-firmware
+    """
+    UV_Value = 0      # 低压保护值, RW, float
+    KT_Value = 1      # 扭矩系数, RW, float
+    OT_Value = 2      # 过温保护值, RW, float
+    OC_Value = 3      # 过流保护值, RW, float
+    ACC = 4           # 加速度, RW, float
+    DEC = 5           # 减速度, RW, float
+    MAX_SPD = 6       # 最大速度, RW, float
+    MST_ID = 7        # 反馈ID, RW, uint32
+    ESC_ID = 8        # 接收ID, RW, uint32
+    TIMEOUT = 9       # 超时警报时间, RW, uint32
+    CTRL_MODE = 10    # 控制模式, RW, uint32
+
+    Damp = 11         # 电机粘滞系数, RO, float
+    Inertia = 12      # 电机转动惯量, RO, float
+    hw_ver = 13       # 保留, RO, uint32
+    sw_ver = 14       # 软件版本号, RO, uint32
+    SN = 15           # 保留, RO, uint32
+    NPP = 16          # 电机极对数, RO, uint32
+    Rs = 17           # 电机相电阻, RO, float
+    LS = 18           # 电机相电感, RO, float
+    Flux = 19         # 电机磁链值, RO, float
+    Gr = 20           # 齿轮减速比, RO, float
+
+    PMAX = 21         # 位置映射范围, RW, float
+    VMAX = 22         # 速度映射范围, RW, float
+    TMAX = 23         # 扭矩映射范围, RW, float
+    I_BW = 24         # 电流环控制带宽, RW, float
+    KP_ASR = 25       # 速度环Kp, RW, float
+    KI_ASR = 26       # 速度环Ki, RW, float
+    KP_APR = 27       # 位置环Kp, RW, float
+    KI_APR = 28       # 位置环Ki, RW, float
+    OV_Value = 29     # 过压保护值, RW, float
+    GREF = 30         # 齿轮力矩效率, RW, float
+    Deta = 31         # 速度环阻尼系数, RW, float
+    V_BW = 32         # 速度环滤波带宽, RW, float
+    IQ_c1 = 33        # 电流环增强系数, RW, float
+    VL_c1 = 34        # 速度环增强系数, RW, float
+    can_br = 35       # CAN波特率代码, RW, uint32
+    
+    sub_ver = 36      # 子版本号, RO, uint32
+    u_off = 50        # u相偏置, RO, float
+    v_off = 51        # v相偏置, RO, float
+    k1 = 52           # 补偿因子1, RO, float
+    k2 = 53           # 补偿因子2, RO, float
+    m_off = 54        # 角度偏移, RO, float
+    dir = 55          # 方向, RO, float
+    p_m = 80          # 电机当前位置, RO, float
+    xout = 81         # 输出轴位置, RO, float
     
     @staticmethod
     def is_int_type(reg_id: int) -> bool:
