@@ -1,4 +1,5 @@
 # src/pydamiao/motor.py
+
 from time import sleep
 
 import numpy as np
@@ -17,7 +18,7 @@ from pydamiao.utils import (
 class Motor:
     """电机类数据容器，用于定义电机对象"""
 
-    def __init__(self, motor_type: MotorType, slave_id: Hex, master_id: Hex):
+    def __init__(self, motor_type: MotorType, slave_id: Hex, master_id: Hex, controller: "MotorController"):
         """初始化电机对象
         
         Args:
@@ -29,6 +30,9 @@ class Motor:
         self.slave_id = slave_id
         self.master_id = master_id
 
+        # 控制器引用
+        self.controller = controller
+
         # 电机状态反馈
         self.pos = float(0)
         self.vel = float(0)
@@ -38,37 +42,49 @@ class Motor:
         self.control_mode: ControlMode | None = None  
         self.param_cache = {}
 
+    # 控制器接口代理
+    def enable(self):
+        self.controller.enable(self)
+
+    def disable(self):
+        self.controller.disable(self)
+    
+    def set_zero_position(self):
+        self.controller.set_zero_position(self)
+
+    def control_mit(self, kp, kd, pos, vel, torque):
+        self.controller.control_mit(self, kp, kd, pos, vel, torque)
+    
+    def control_pos_vel(self, pos_cmd: float, vel_cmd: float):
+        self.controller.control_pos_vel(self, pos_cmd, vel_cmd)
+    
+    def control_vel(self, vel_cmd: float):
+        self.controller.control_vel(self, vel_cmd)
+
+    # 参数
+    def refresh_motor_status(self):
+        self.controller.refresh_motor_status(self)
+    
+    def read_motor_param(self, reg_id: MotorReg):
+        self.controller.read_motor_param(self, reg_id)
+
+    def change_motor_param(self, reg_id: MotorReg, data: float | int):
+        self.controller.change_motor_param(self, reg_id, data)
+
+    def save_motor_param(self):
+        self.controller.save_motor_param(self)
+    
+    def change_limit_param(self, motor_type: MotorType, PMAX: float, VMAX: float, TMAX: float):
+        self.controller.change_limit_param(motor_type, PMAX, VMAX, TMAX)
+    
+    def switch_control_mode(self, mode: ControlMode):
+        self.controller.switch_control_mode(self, mode)
+
     def update_from_controller(self, pos: float, vel: float, torque: float):
         """从控制器被动接受更新数据"""
         self.pos = pos
         self.vel = vel
         self.torque = torque
-
-    def get_position(self):
-        """获取电机位置"""
-        return self.pos
-
-    def get_velocity(self):
-        """获取电机速度"""
-        return self.vel
-
-    def get_torque(self):
-        """获取电机力矩"""
-        return self.torque
-
-    def get_param(self, reg_id: MotorReg):
-        """获取电机内部参数，需要提前读取
-        
-        Args:
-            reg_id: 电机寄存器中的值
-            
-        Returns:
-            电机寄存器中的值
-        """
-        if reg_id in self.param_cache:
-            return self.param_cache[reg_id]
-        else:
-            return None
 
 
 class MotorController:
