@@ -2,9 +2,9 @@
 from enum import IntEnum
 from typing import NamedTuple, TypeAlias
 
-
-Hex: TypeAlias = int   # 类型别名
-
+# 类型别名
+Hex: TypeAlias = int       # 用于描述一些用0x开头的十六进制数
+MotorId: TypeAlias = int   # slave_id 和 master_id 标注用
 
 class MotorType(IntEnum):
     """电机类型枚举类"""

@@ -5,7 +5,7 @@ import time
 from pydamiao.bus import SerialBus
 from pydamiao.protocol import DamiaoProtocol, ParsedMessage
 from pydamiao.result import Result
-from pydamiao.structs import ControlMode, MotorFault, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
+from pydamiao.structs import ControlMode, MotorId, MotorFault, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
 
 
 class Motor:
@@ -15,8 +15,8 @@ class Motor:
         self,
         bus: SerialBus,
         motor_type: MotorType,
-        slave_id: int,
-        master_id: int = 0,
+        slave_id: MotorId,
+        master_id: MotorId = 0,
     ) -> None:
         """初始化绑定到共享串口总线的电机对象。
 
@@ -43,7 +43,7 @@ class Motor:
         self.rotor_temp: int | None = None
 
         self.fault: MotorFault | None = None
-        self.param_cache: dict[int, float | int] = {}
+        self.param_cache: dict[MotorReg, float | int] = {}
 
         # 手动维护的状态
         self.enabled = False
@@ -106,7 +106,7 @@ class Motor:
     def get_param(self, reg_id: MotorReg) -> float | int | None:
         """返回缓存中的寄存器值；如果尚未读取则返回 ``None``。"""
         with self._state_lock:
-            return self.param_cache.get(int(reg_id))
+            return self.param_cache.get(reg_id)
 
 
     # ===========================================================================
@@ -413,7 +413,7 @@ class Motor:
         if message.kind == "param" and message.reg_id is not None:
             with self._state_lock:
                 if message.value is not None:
-                    self.param_cache[message.reg_id] = message.value
+                    self.param_cache[MotorReg(message.reg_id)] = message.value
                     self.last_update_time = time.time()
 
 
@@ -427,15 +427,15 @@ class MotorManager:
             bus: 所有托管电机共用的串口总线。
         """
         self.bus = bus
-        self._motors_by_slave_id: dict[int, Motor] = {}
-        self._motors_by_alias: dict[int, Motor] = {}
+        self._motors_by_slave_id: dict[MotorId, Motor] = {}
+        self._motors_by_alias: dict[MotorId, Motor] = {}
 
     @property
-    def motors(self) -> dict[int, Motor]:
+    def motors(self) -> dict[MotorId, Motor]:
         """返回一份按 slave id 建立的电机映射副本。"""
         return dict(self._motors_by_slave_id)
 
-    def add_motor(self, motor_type: MotorType, slave_id: int, master_id: int = 0) -> Motor:
+    def add_motor(self, motor_type: MotorType, slave_id: MotorId, master_id: MotorId = 0) -> Motor:
         """创建、注册并返回一个新的电机对象。"""
         self._ensure_aliases_available((slave_id,) if master_id == 0 else (slave_id, master_id))
         motor = Motor(bus=self.bus, motor_type=motor_type, slave_id=slave_id, master_id=master_id)
@@ -466,11 +466,11 @@ class MotorManager:
             if owner is not None and owner is not current_motor:
                 raise ValueError(f"Motor id 0x{alias_id:X} is already registered")
 
-    def get(self, motor_id: int) -> Motor | None:
+    def get(self, motor_id: MotorId) -> Motor | None:
         """通过 slave id 或 master id 返回电机对象。"""
         return self._motors_by_alias.get(motor_id)
 
-    def __getitem__(self, motor_id: int) -> Motor:
+    def __getitem__(self, motor_id: MotorId) -> Motor:
         motor = self.get(motor_id)
         if motor is None:
             raise KeyError(motor_id)
@@ -481,58 +481,56 @@ class MotorManager:
     # 多电机状态/参数
     # ===========================================================================   
      
-    def get_all_params(self) -> dict[int, dict[int, float | int]]:
-        """获取所有已注册电机的已缓存的寄存器参数。
-        
-        Returns:
-            每个电机的参数字典
-        """
+    def get_all_params(self) -> dict[MotorId, dict[MotorReg, float | int]]:
+        """获取所有已注册电机的已缓存的寄存器参数。"""
         return {
             motor.slave_id: motor.param_cache
             for motor in self._motors_by_slave_id.values()
         }
-    
-    def get_all_status(self) -> dict[int, MotorState]:
-        """返回所有已注册电机的当前状态。
-        
-        Returns:
-            每个电机的状态字典
-        """
+
+    def get_all_status(self) -> dict[MotorId, MotorState]:
+        """返回所有已注册电机的当前状态。"""
         return {
             motor.slave_id: motor.get_state() 
             for motor in self._motors_by_slave_id.values()
         }
 
-    def refresh_all_status(self) -> dict[int, MotorState]:
-        """刷新所有已注册电机的状态。
-        
-        Returns:
-            每个电机的状态字典
-        """
+    def refresh_all_status(self) -> dict[MotorId, MotorState]:
+        """刷新所有已注册电机的状态。"""
         for motor in self._motors_by_slave_id.values():
             motor.refresh_state()
         
         return self.get_all_status()
 
 
-
     # ===========================================================================
     # 基础控制
     # ===========================================================================
 
-    def enable_all(self) -> dict[int, Result[None]]:
+    def enable_all(self) -> dict[MotorId, Result[None]]:
         """使能所有已注册电机。"""
-        return {motor.slave_id: motor.enable() for motor in self._motors_by_slave_id.values()}
+        return {
+            motor.slave_id: motor.enable()
+            for motor in self._motors_by_slave_id.values()
+        }
 
-    def disable_all(self) -> dict[int, Result[None]]:
+    def disable_all(self) -> dict[MotorId, Result[None]]:
         """失能所有已注册电机。"""
-        return {motor.slave_id: motor.disable() for motor in self._motors_by_slave_id.values()}
+        return {
+            motor.slave_id: motor.disable()
+            for motor in self._motors_by_slave_id.values()
+        }
 
-    def refresh_all(self, timeout: float = 0.5) -> dict[int, Result[MotorState]]:
-        """刷新并返回所有已注册电机的状态。"""
-        return {motor.slave_id: motor.refresh_state(timeout=timeout) for motor in self._motors_by_slave_id.values()}
+    def set_zero_all(self) -> dict[MotorId, Result[None]]:
+        """将所有已注册电机的零点设置为当前位置。"""
+        return {
+            motor.slave_id: motor.set_zero()
+            for motor in self._motors_by_slave_id.values()
+        }
 
-    def clean_all_errors(self) -> dict[int, Result[None]]:
+    def clear_error_all(self) -> dict[MotorId, Result[None]]:
         """清除所有已注册电机的错误。"""
-        return {motor.slave_id: motor.clear_error() for motor in self._motors_by_slave_id.values()}
-
+        return {
+            motor.slave_id: motor.clear_error()
+            for motor in self._motors_by_slave_id.values()
+        }
