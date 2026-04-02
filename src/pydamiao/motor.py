@@ -108,7 +108,7 @@ class Motor:
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.ENABLE_CMD))
         with self._state_lock:
             self.enabled = True
-        return Result()
+        return Result.ok()
 
     def disable(self) -> Result[None]:
         """失能电机，并等待速度降到很小的阈值以下。"""
@@ -118,7 +118,7 @@ class Motor:
         while True:  # (安全性) 尝试失能电机, 直到速度降到阈值以下 (达妙没有失能/失能的状态反馈)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return Result(error="Motor did not slow down to the target threshold in time", code="disable_timeout")
+                return Result.err("Motor did not slow down to the target threshold in time", code="disable_timeout")
 
             result = self._wait_for_feedback(command, timeout=min(0.05, remaining))
             with self._state_lock:
@@ -128,19 +128,19 @@ class Motor:
                 state = self.get_state()
                 if abs(state.vel) <= 0.02:
                     print("Motor stopped")
-                    return Result()
+                    return Result.ok()
 
     def set_zero(self) -> Result[None]:
         """把当前位置设置为电机零点。"""
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.SET_ZERO_CMD))
-        return Result()
+        return Result.ok()
 
     def clear_error(self) -> Result[None]:
         """清除错误 (过热等错误)"""
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.CLEAN_ERROR_CMD))
         with self._state_lock:
             self.fault = MotorFault.NONE
-        return Result()
+        return Result.ok()
 
     def set_mode(self, mode: ControlMode, timeout: float = 1.0) -> Result[ControlMode]:
         """切换电机控制模式。
@@ -151,11 +151,11 @@ class Motor:
         """
         result = self.write_param(MotorReg.CTRL_MODE, int(mode), timeout=timeout)
         if not result:
-            return Result(error=result.error or "Failed to switch mode", code=result.code or "error")
+            return Result.err(result.error or "Failed to switch mode", code=result.code or "error")
 
         with self._state_lock:
             self.control_mode = mode
-        return Result(mode)
+        return Result.ok(mode)
 
     def set_mit(
         self,
@@ -193,7 +193,7 @@ class Motor:
                 torque=torque,
             )
         )
-        return Result()
+        return Result.ok()
 
     def set_pos_vel(self, pos: float, vel: float, auto_switch_mode: bool = True) -> Result[None]:
         """发送位置速度控制命令。
@@ -210,7 +210,7 @@ class Motor:
         if not mode_result:
             return mode_result
         self.bus.send(DamiaoProtocol.encode_pos_vel_control(self.slave_id, pos, vel))
-        return Result()
+        return Result.ok()
 
     def set_velocity(self, vel: float, auto_switch_mode: bool = True) -> Result[None]:
         """发送速度控制命令。
@@ -226,7 +226,7 @@ class Motor:
         if not mode_result:
             return mode_result
         self.bus.send(DamiaoProtocol.encode_velocity_control(self.slave_id, vel))
-        return Result()
+        return Result.ok()
 
     def set_pos_force(
         self,
@@ -250,7 +250,7 @@ class Motor:
         if not mode_result:
             return mode_result
         self.bus.send(DamiaoProtocol.encode_pos_force_control(self.slave_id, pos, vel, current))
-        return Result()
+        return Result.ok()
 
     def refresh_state(self, timeout: float = 0.5) -> Result[MotorState]:
         """请求最新状态，并返回更新后的缓存结果。"""
@@ -260,8 +260,8 @@ class Motor:
             timeout=timeout,
         )
         if not result:
-            return Result(error=result.error or "Failed to refresh state", code=result.code or "error")
-        return Result(self.get_state())
+            return Result.err(result.error or "Failed to refresh state", code=result.code or "error")
+        return Result.ok(self.get_state())
 
     def read_param(self, reg_id: MotorReg, timeout: float = 0.5) -> Result[float | int]:
         """读取电机寄存器。
@@ -280,10 +280,10 @@ class Motor:
             timeout=timeout,
         )
         if not result:
-            return Result(error=result.error or "Failed to read motor parameter", code=result.code or "error")
+            return Result.err(result.error or "Failed to read motor parameter", code=result.code or "error")
         if result.value is None:
-            return Result(error="Motor did not return a parameter value", code="invalid_response")
-        return Result(result.value.value)
+            return Result.err("Motor did not return a parameter value", code="invalid_response")
+        return Result.ok(result.value.value)
 
     def write_param(self, reg_id: MotorReg, value: float | int, timeout: float = 1.0) -> Result[float | int]:
         """写入电机寄存器，并校验回读响应。
@@ -303,24 +303,24 @@ class Motor:
             timeout=timeout,
         )
         if not result:
-            return Result(error=result.error or "Failed to write motor parameter", code=result.code or "error")
+            return Result.err(result.error or "Failed to write motor parameter", code=result.code or "error")
         if result.value is None:
-            return Result(error="Motor did not return a parameter value", code="invalid_response")
+            return Result.err("Motor did not return a parameter value", code="invalid_response")
 
         returned = result.value.value
         if returned is None:
-            return Result(error="Motor did not return a parameter value", code="invalid_response")
+            return Result.err("Motor did not return a parameter value", code="invalid_response")
 
         if isinstance(returned, float):
             if abs(returned - float(value)) > 0.1:
-                return Result(error="Motor parameter verification failed", code="mismatch")
+                return Result.err("Motor parameter verification failed", code="mismatch")
         elif returned != int(value):
-            return Result(error="Motor parameter verification failed", code="mismatch")
+            return Result.err("Motor parameter verification failed", code="mismatch")
 
         if int(reg_id) == int(MotorReg.CTRL_MODE):
             with self._state_lock:
                 self.control_mode = ControlMode(int(returned))
-        return Result(returned)
+        return Result.ok(returned)
 
     def save_params(self, disable: bool=False) -> Result[None]:
         """ 把当前参数集保存到电机 flash
@@ -335,25 +335,25 @@ class Motor:
         if disable:
             self.disable()
         self.bus.send(DamiaoProtocol.encode_save_params(self.slave_id))
-        return Result()
+        return Result.ok()
 
     def _prepare_control_mode(self, target_mode: ControlMode, auto_switch_mode: bool) -> Result[None]:
         if self.control_mode == target_mode:
-            return Result()
+            return Result.ok()
         if not auto_switch_mode:
-            return Result(error=f"Motor is not in {target_mode.name} mode", code="mode_mismatch")
+            return Result.err(f"Motor is not in {target_mode.name} mode", code="mode_mismatch")
 
         result = self.set_mode(target_mode)
         if not result:
-            return Result(error=result.error or "Failed to switch control mode", code=result.code or "error")
-        return Result()
+            return Result.err(result.error or "Failed to switch control mode", code=result.code or "error")
+        return Result.ok()
 
     def _ensure_no_fault(self) -> Result[None]:
         with self._state_lock:
             fault = self.fault
         if fault is None or fault == MotorFault.NONE:
-            return Result()
-        return Result(error=f"Motor is in fault state: {fault.name}", code="fault")
+            return Result.ok()
+        return Result.err(f"Motor is in fault state: {fault.name}", code="fault")
 
     def _wait_for_feedback(self, command: bytes, timeout: float) -> Result[ParsedMessage]:
         """发送命令并等待属于当前电机的任意反馈。"""

@@ -336,8 +336,8 @@ def test_disable_retries_until_velocity_is_small_enough():
 
 
 def test_result_feels_pythonic_to_use():
-    success = Result(123)
-    failure = Result(error="boom", code="bad")
+    success = Result.ok(123)
+    failure = Result.err("boom", code="bad")
 
     assert success.is_ok
     assert success.unwrap() == 123

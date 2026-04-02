@@ -163,12 +163,12 @@ class SerialBus:
                 response = response_queue.get(timeout=timeout)
             except Empty:
                 self._check_receiver()
-                return Result(error="Timed out waiting for motor response", code="timeout")
+                return Result.err("Timed out waiting for motor response", code="timeout")
 
             self._check_receiver()
             if response is None:
-                return Result(error="Receiver stopped before a matching response arrived", code="interrupted")
-            return Result(response)
+                return Result.err("Receiver stopped before a matching response arrived", code="interrupted")
+            return Result.ok(response)
         finally:
             with self._waiters_lock:
                 waiter = (matcher, response_queue)
