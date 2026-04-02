@@ -155,7 +155,8 @@ class Motor:
 
         while True:  # (安全性) 尝试失能电机, 直到速度降到阈值以下 (达妙没有失能/失能的状态反馈)
             # 超时检测
-            if (deadline - time.monotonic()) <= 0:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 return Result.err("Motor did not slow down to the target threshold in time", code="disable_timeout")
 
             # 继续发送失能命令
