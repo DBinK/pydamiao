@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import threading
 import time
@@ -60,7 +59,7 @@ class Motor:
     @property
     def alias_ids(self) -> tuple[int, ...]:
         """返回所有可能把消息路由到本电机的 id。"""
-        if self.master_id != 0:
+        if self.master_id != 0: 
             return self.slave_id, self.master_id
         return (self.slave_id,)
 
@@ -323,9 +322,18 @@ class Motor:
                 self.control_mode = ControlMode(int(returned))
         return Result(returned)
 
-    def save_params(self) -> Result[None]:
-        """把当前参数集保存到电机 flash, 官方文档称不可高频调用, flash 寿命约1万次"""
-        self.disable()
+    def save_params(self, disable: bool=False) -> Result[None]:
+        """ 把当前参数集保存到电机 flash
+            Args:
+                disable: 是否在保存参数时自动失能电机 (仅失能是可以保存参数)
+            Note:
+                1. 存储参数只在失能模式下生效。
+                2. 存储参数时将一次性保留全部参数。
+                3. 该操作将参数写入片内flash中，每次操作时间最大为30ms，请注意留足足够的时间。
+                4. flash擦写次数约1万次，请不要频繁发送“存储参数”指令。
+        """
+        if disable:
+            self.disable()
         self.bus.send(DamiaoProtocol.encode_save_params(self.slave_id))
         return Result()
 
@@ -454,3 +462,7 @@ class MotorManager:
     def refresh_all(self, timeout: float = 0.5) -> dict[int, Result[MotorState]]:
         """刷新并返回所有已注册电机的状态。"""
         return {motor.slave_id: motor.refresh_state(timeout=timeout) for motor in self._motors_by_slave_id.values()}
+
+    def clean_all_errors(self) -> dict[int, Result[None]]:
+        """清除所有已注册电机的错误。"""
+        return {motor.slave_id: motor.clear_error() for motor in self._motors_by_slave_id.values()}
