@@ -5,7 +5,17 @@ import time
 from pydamiao.bus import SerialBus
 from pydamiao.protocol import DamiaoProtocol, ParsedMessage
 from pydamiao.result import Result
-from pydamiao.structs import ControlMode, MotorId, MotorFault, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
+from pydamiao.structs import (
+    ControlMode,
+    RegId,
+    MotorId,
+    MotorFault,
+    MotorReg,
+    MotorState,
+    MotorType,
+    MotorLimits,
+    MOTOR_LIMITS,
+)
 
 
 class Motor:
@@ -43,7 +53,7 @@ class Motor:
         self.rotor_temp: int | None = None
 
         self.fault: MotorFault | None = None
-        self.param_cache: dict[MotorReg, float | int] = {}
+        self.param_cache: dict[RegId, float | int] = {}  # 可能有未知的寄存器
 
         # 手动维护的状态
         self.enabled = False
@@ -103,7 +113,7 @@ class Motor:
         with self._state_lock:
             return self.rotor_temp
 
-    def get_param(self, reg_id: MotorReg) -> float | int | None:
+    def get_param(self, reg_id: RegId) -> float | int | None:
         """返回缓存中的寄存器值；如果尚未读取则返回 ``None``。"""
         with self._state_lock:
             return self.param_cache.get(reg_id)
@@ -413,7 +423,7 @@ class Motor:
         if message.kind == "param" and message.reg_id is not None:
             with self._state_lock:
                 if message.value is not None:
-                    self.param_cache[MotorReg(message.reg_id)] = message.value
+                    self.param_cache[message.reg_id] = message.value
                     self.last_update_time = time.time()
 
 
@@ -481,7 +491,7 @@ class MotorManager:
     # 多电机状态/参数
     # ===========================================================================   
      
-    def get_all_params(self) -> dict[MotorId, dict[MotorReg, float | int]]:
+    def get_all_params(self) -> dict[MotorId, dict[RegId, float | int]]:
         """获取所有已注册电机的已缓存的寄存器参数。"""
         return {
             motor.slave_id: motor.param_cache

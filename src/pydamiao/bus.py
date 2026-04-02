@@ -175,20 +175,25 @@ class SerialBus:
                 if waiter in self._waiters:
                     self._waiters.remove(waiter)
 
+
     def _receiver_loop(self) -> None:
         try:
             while not self._stop_event.is_set():
-                chunk = self.serial.read(self.read_size)
-                if not chunk:
-                    continue
+                try:
+                    chunk = self.serial.read(self.read_size)
+                    if not chunk:
+                        continue
 
-                self._rx_buffer += chunk
-                frames, self._rx_buffer = self.protocol.extract_frames(self._rx_buffer)
-                for frame in frames:
-                    message = self.protocol.parse_frame(frame)
-                    self._dispatch_message(message)
-        except ValueError as exc:
-            self._receiver_error = ProtocolError(str(exc))
+                    self._rx_buffer += chunk
+                    frames, self._rx_buffer = self.protocol.extract_frames(self._rx_buffer)
+                    for frame in frames:
+                        message = self.protocol.parse_frame(frame)
+                        self._dispatch_message(message)
+                except ValueError as exc:  # 单帧解析错误不应终止整个接收线程
+                    print(exc)  # TODO: 改为用日志记录
+                    continue
+        except SerialException as exc:
+            self._receiver_error = SerialBusError(f"Serial communication failed: {exc}")
             self._notify_waiters_of_failure()
         except Exception as exc:
             self._receiver_error = exc

@@ -4,7 +4,7 @@ from struct import pack
 
 import numpy as np
 
-from pydamiao.structs import CanResp, Hex, MotorFault, MotorLimits, MotorReg
+from pydamiao.structs import CanResp, Hex, MotorId, MotorFault, MotorLimits, MotorReg
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s, uint8s_to_float, uint8s_to_uint32, uint_to_float
 
 
@@ -19,7 +19,7 @@ class ParsedMessage:
     route_ids: tuple[int, ...] = ()
     reg_id: int | None = None
     value: float | int | None = None
-    slave_id: int | None = None
+    slave_id: MotorId | None = None
     fault: MotorFault | None = None
     mos_temp: int | None = None
     rotor_temp: int | None = None
@@ -76,7 +76,7 @@ class DamiaoProtocol:
         )
 
     @classmethod
-    def encode_basic_command(cls, motor_id: Hex, command: int) -> bytes:
+    def encode_basic_command(cls, motor_id: MotorId, command: int) -> bytes:
         """编码使能、失能、设零点这类基础命令。"""
         payload = bytes([0xFF] * 7 + [command])
         return cls.build_bridge_frame(motor_id, payload)
@@ -84,7 +84,7 @@ class DamiaoProtocol:
     @classmethod
     def encode_mit_control(
         cls,
-        motor_id: Hex,
+        motor_id: MotorId,
         limits: MotorLimits,
         kp: float,
         kd: float,
@@ -114,19 +114,19 @@ class DamiaoProtocol:
         return cls.build_bridge_frame(motor_id, payload)
 
     @classmethod
-    def encode_pos_vel_control(cls, motor_id: Hex, pos: float, vel: float) -> bytes:
+    def encode_pos_vel_control(cls, motor_id: MotorId, pos: float, vel: float) -> bytes:
         """编码位置速度控制命令。"""
         payload = bytes(float_to_uint8s(pos) + float_to_uint8s(vel))
         return cls.build_bridge_frame(cls.POS_VEL_BASE_ID + motor_id, payload)
 
     @classmethod
-    def encode_velocity_control(cls, motor_id: Hex, vel: float) -> bytes:
+    def encode_velocity_control(cls, motor_id: MotorId, vel: float) -> bytes:
         """编码纯速度控制命令。"""
         payload = bytes(float_to_uint8s(vel) + (0, 0, 0, 0))
         return cls.build_bridge_frame(cls.VEL_BASE_ID + motor_id, payload)
 
     @classmethod
-    def encode_pos_force_control(cls, motor_id: Hex, pos: float, vel: float, current: float) -> bytes:
+    def encode_pos_force_control(cls, motor_id: MotorId, pos: float, vel: float, current: float) -> bytes:
         """编码力位混合控制命令。"""
         vel_uint = np.uint16(vel)
         current_uint = np.uint16(current)
@@ -142,19 +142,19 @@ class DamiaoProtocol:
         return cls.build_bridge_frame(cls.POS_FORCE_BASE_ID + motor_id, payload)
 
     @classmethod
-    def encode_refresh_state(cls, slave_id: Hex) -> bytes:
+    def encode_refresh_state(cls, slave_id: MotorId) -> bytes:
         """编码状态刷新请求。"""
         payload = bytes([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00])
         return cls.build_bridge_frame(cls.QUERY_ID, payload)
 
     @classmethod
-    def encode_read_param(cls, slave_id: Hex, reg_id: MotorReg) -> bytes:
+    def encode_read_param(cls, slave_id: MotorId, reg_id: MotorReg) -> bytes:
         """编码寄存器读取请求。"""
         payload = bytes([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0x33, int(reg_id), 0x00, 0x00, 0x00, 0x00])
         return cls.build_bridge_frame(cls.QUERY_ID, payload)
 
     @classmethod
-    def encode_write_param(cls, slave_id: Hex, reg_id: MotorReg, value: float | int) -> bytes:
+    def encode_write_param(cls, slave_id: MotorId, reg_id: MotorReg, value: float | int) -> bytes:
         """编码寄存器写入请求。"""
         payload = bytearray([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0x55, int(reg_id), 0x00, 0x00, 0x00, 0x00])
         if MotorReg.is_int_type(int(reg_id)):
@@ -164,7 +164,7 @@ class DamiaoProtocol:
         return cls.build_bridge_frame(cls.QUERY_ID, bytes(payload))
 
     @classmethod
-    def encode_save_params(cls, slave_id: Hex) -> bytes:
+    def encode_save_params(cls, slave_id: MotorId) -> bytes:
         """编码保存参数到 flash 的请求。"""
         payload = bytes([slave_id & 0xFF, (slave_id >> 8) & 0xFF, 0xAA, 0x00, 0x00, 0x00, 0x00, 0x00])
         return cls.build_bridge_frame(cls.QUERY_ID, payload)
