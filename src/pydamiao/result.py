@@ -1,12 +1,12 @@
-from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, TypeVar, cast
+from typing import Callable, Generic, Optional, TypeVar, cast
 
 T = TypeVar("T")
+U = TypeVar("U")
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class Result(Generic[T]):
     """表示一次高层电机操作的结果。
 
@@ -20,26 +20,42 @@ class Result(Generic[T]):
     error: str | None = None
     code: str | None = None
 
+    @classmethod
+    def ok(cls, value: Optional[T] = None) -> "Result[T]":
+        """创建成功结果。"""
+        return cls(value=value)
+
+    @classmethod
+    def err(cls, error: str, code: Optional[str] = None) -> "Result[T]":
+        """创建错误结果。"""
+        return cls(error=error, code=code)
+
     @property
-    def ok(self) -> bool:
-        """返回本次操作是否成功。"""
+    def is_ok(self) -> bool:
         return self.error is None
 
-    def expect(self, message: str | None = None) -> T:
-        """返回结果值，失败时抛出异常。
+    @property
+    def is_err(self) -> bool:
+        return self.error is not None
 
-        Args:
-            message: 可选的覆盖错误消息。
-
-        Returns:
-            成功时的结果值。
-
-        Raises:
-            RuntimeError: 当结果中包含错误时抛出。
-        """
-        if self.error is not None:
-            raise RuntimeError(message or self.error)
+    def unwrap(self) -> T:
+        """获取结果中的值。"""
+        if self.is_err:
+            raise RuntimeError(f"Unwrap failed: {self.error}")
         return cast(T, self.value)
 
+    def unwrap_or(self, default: T) -> T:
+        """获取结果中的值，如果结果为错误则返回默认值。"""
+        if self.is_ok:
+            return cast(T, self.value)
+        return default
+
+    def map(self, func: Callable[[T], U]) -> "Result[U]":
+        """将结果中的值映射为另一个结果, 以实现链式调用。"""
+        if self.is_ok:
+            return Result.ok(func(cast(T, self.value)))
+        return Result.err(cast(str, self.error), self.code)
+
     def __bool__(self) -> bool:
-        return self.error is None
+        """返回结果是否成功。"""
+        return self.is_ok

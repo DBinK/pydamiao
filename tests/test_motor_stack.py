@@ -126,9 +126,9 @@ def test_motor_refresh_state_uses_background_receiver():
         feed_later(fake_serial, frame)
 
         result = motor.refresh_state(timeout=0.2)
-        state = result.expect()
+        state = result.unwrap()
 
-        assert result.ok
+        assert result.is_ok
         assert state.pos == pytest.approx(1.2, abs=0.02)
         assert state.vel == pytest.approx(-2.0, abs=0.05)
         assert state.torque == pytest.approx(0.8, abs=0.05)
@@ -159,7 +159,7 @@ def test_motor_caches_fault_code_from_status_feedback():
 
         result = motor.refresh_state(timeout=0.2)
 
-        assert result.ok
+        assert result.is_ok
         assert motor.fault == MotorFault.UNDER_VOLTAGE
         assert motor.enabled is False
     finally:
@@ -188,7 +188,7 @@ def test_motor_caches_temperatures_from_status_feedback():
 
         result = motor.refresh_state(timeout=0.2)
 
-        assert result.ok
+        assert result.is_ok
         assert motor.get_mos_temp() == 48
         assert motor.get_rotor_temp() == 55
     finally:
@@ -209,7 +209,7 @@ def test_motor_read_and_write_param_use_request_response_matching():
         feed_later(fake_serial, read_frame)
         read_result = motor.read_param(MotorReg.PMAX, timeout=0.2)
 
-        assert read_result.ok
+        assert read_result.is_ok
         assert read_result.value == pytest.approx(12.5, abs=1e-5)
         assert motor.get_param(MotorReg.PMAX) == pytest.approx(12.5, abs=1e-5)
 
@@ -221,7 +221,7 @@ def test_motor_read_and_write_param_use_request_response_matching():
         feed_later(fake_serial, write_frame)
         write_result = motor.set_mode(ControlMode.POS_VEL, timeout=0.2)
 
-        assert write_result.ok
+        assert write_result.is_ok
         assert write_result.value == ControlMode.POS_VEL
         assert motor.control_mode == ControlMode.POS_VEL
     finally:
@@ -242,7 +242,7 @@ def test_control_commands_auto_switch_mode_before_sending():
         feed_later(fake_serial, mode_frame)
         result = motor.set_pos_vel(1.0, 2.0)
 
-        assert result.ok
+        assert result.is_ok
         assert motor.control_mode == ControlMode.POS_VEL
         assert fake_serial.writes[0] == DamiaoProtocol.encode_write_param(0x06, MotorReg.CTRL_MODE, int(ControlMode.POS_VEL))
         assert fake_serial.writes[1] == DamiaoProtocol.encode_pos_vel_control(0x06, 1.0, 2.0)
@@ -259,9 +259,9 @@ def test_motor_timeout_and_unsupported_paths_return_result_errors():
         timeout_result = motor.read_param(MotorReg.PMAX, timeout=0.05)
         clear_result = motor.clear_error()
 
-        assert not timeout_result.ok
+        assert not timeout_result.is_ok
         assert timeout_result.code == "timeout"
-        assert clear_result.ok
+        assert clear_result.is_ok
     finally:
         bus.close()
 
@@ -290,7 +290,7 @@ def test_control_commands_are_blocked_when_motor_has_fault():
 
         result = motor.set_pos_vel(1.0, 2.0)
 
-        assert not result.ok
+        assert not result.is_ok
         assert result.code == "fault"
         assert fake_serial.writes == [
             DamiaoProtocol.encode_refresh_state(0x06),
@@ -326,7 +326,7 @@ def test_disable_retries_until_velocity_is_small_enough():
 
         result = motor.disable()
 
-        assert result.ok
+        assert result.is_ok
         disable_frame = DamiaoProtocol.encode_basic_command(0x06, DamiaoProtocol.DISABLE_CMD)
         assert fake_serial.writes.count(disable_frame) >= 2
         assert set(fake_serial.writes) == {disable_frame}
@@ -339,13 +339,13 @@ def test_result_feels_pythonic_to_use():
     success = Result(123)
     failure = Result(error="boom", code="bad")
 
-    assert success.ok
-    assert success.expect() == 123
+    assert success.is_ok
+    assert success.unwrap() == 123
 
     assert not failure
-    assert not failure.ok
+    assert not failure.is_ok
     with pytest.raises(RuntimeError, match="boom"):
-        failure.expect()
+        failure.unwrap()
 
 
 def test_motor_manager_supports_direct_registration_and_batch_commands():
@@ -363,7 +363,7 @@ def test_motor_manager_supports_direct_registration_and_batch_commands():
         assert manager[0x06] is direct_motor
         assert manager[0x16] is direct_motor
         assert manager.get(0x07) is added_motor
-        assert all(result.ok for result in results.values())
+        assert all(result.is_ok for result in results.values())
         assert len(fake_serial.writes) == 2
         assert fake_serial.writes[0] == DamiaoProtocol.encode_basic_command(0x06, DamiaoProtocol.ENABLE_CMD)
         assert fake_serial.writes[1] == DamiaoProtocol.encode_basic_command(0x07, DamiaoProtocol.ENABLE_CMD)
