@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from queue import Empty, Queue
 import threading
