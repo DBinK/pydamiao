@@ -84,6 +84,7 @@ class Motor:
         except Exception:
             pass  # 忽略清理过程中的异常，避免影响程序正常退出
 
+
     # ===========================================================================
     # 电机对象的 Getter 方法
     # ===========================================================================
@@ -147,25 +148,24 @@ class Motor:
             self.enabled = True
         return Result.ok()
 
-    def disable(self) -> Result[None]:
+    def disable(self, timeout_sec=3) -> Result[None]:
         """失能电机，并等待速度降到很小的阈值以下。"""
-        deadline = time.monotonic() + 1.0
+        deadline = time.monotonic() + timeout_sec
         command = DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.DISABLE_CMD)
 
         while True:  # (安全性) 尝试失能电机, 直到速度降到阈值以下 (达妙没有失能/失能的状态反馈)
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
+            # 超时检测
+            if (deadline - time.monotonic()) <= 0:
                 return Result.err("Motor did not slow down to the target threshold in time", code="disable_timeout")
 
-            result = self._wait_for_feedback(command, timeout=min(0.05, remaining))
-            with self._state_lock:
-                self.enabled = False
-
-            if result:
-                state = self.get_state()
-                if abs(state.vel) <= 0.02:
-                    print(f"Motor {self.slave_id} disabled")  # TODO: 添加日志
-                    return Result.ok()
+            # 继续发送失能命令
+            result = self._request_feedback(command, timeout=min(0.05, remaining))
+            
+            # 检查速度和力矩是否都降到阈值以下
+            if result.is_ok and (abs(self.vel) <= 0.02 and abs(self.torque) <= 0.02):
+                with self._state_lock:
+                    self.enabled = False  # 修改状态
+                return Result.ok()
 
     def set_zero(self) -> Result[None]:
         """把当前位置设置为电机零点。"""
@@ -310,7 +310,7 @@ class Motor:
             return Result.err(result.error or "Failed to refresh state", code=result.code or "error")
         return Result.ok(self.get_state())
 
-    def read_param(self, reg_id: MotorReg, timeout: float = 0.2) -> Result[float | int]:
+    def read_param(self, reg_id: MotorReg, timeout: float = 0.1) -> Result[float | int]:
         """读取电机寄存器。
 
         Args:
@@ -407,7 +407,7 @@ class Motor:
             return Result.ok()
         return Result.err(f"Motor is in fault state: {fault.name}", code="fault")
 
-    def _wait_for_feedback(self, command: bytes, timeout: float) -> Result[ParsedMessage]:
+    def _request_feedback(self, command: bytes, timeout: float) -> Result[ParsedMessage]:
         """发送命令并等待属于当前电机的任意反馈。"""
         return self.bus.request(
             command,
