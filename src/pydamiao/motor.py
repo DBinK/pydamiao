@@ -56,6 +56,11 @@ class Motor:
         # 注册电机通讯总线
         self.bus.register_motor(self)
 
+
+    # ===========================================================================
+    # 电机对象的 Getter 方法
+    # ===========================================================================
+
     @property
     def alias_ids(self) -> tuple[int, ...]:
         """返回所有可能把消息路由到本电机的 id。"""
@@ -103,6 +108,11 @@ class Motor:
         with self._state_lock:
             return self.param_cache.get(int(reg_id))
 
+
+    # ===========================================================================
+    # 基础控制函数
+    # ===========================================================================
+
     def enable(self) -> Result[None]:
         """使能电机。"""
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.ENABLE_CMD))
@@ -142,6 +152,11 @@ class Motor:
             self.fault = MotorFault.NONE
         return Result.ok()
 
+
+    # ===========================================================================
+    # 运动控制函数
+    # ===========================================================================
+
     def set_mode(self, mode: ControlMode, timeout: float = 1.0) -> Result[ControlMode]:
         """切换电机控制模式。
 
@@ -164,7 +179,7 @@ class Motor:
         kp: float,
         kd: float,
         torque: float,
-        auto_switch_mode: bool = True,
+        auto_mode: bool = True,
     ) -> Result[None]:
         """发送 MIT 控制命令。
 
@@ -174,12 +189,12 @@ class Motor:
             kp: 位置增益。
             kd: 速度增益。
             torque: 前馈力矩命令。
-            auto_switch_mode: 是否自动切换到 MIT 模式。
+            auto_mode: 是否自动切换到 MIT 模式。
         """
         fault_result = self._ensure_no_fault()
         if not fault_result:
             return fault_result
-        mode_result = self._prepare_control_mode(ControlMode.MIT, auto_switch_mode)
+        mode_result = self._prepare_control_mode(ControlMode.MIT, auto_mode)
         if not mode_result:
             return mode_result
         self.bus.send(
@@ -195,34 +210,34 @@ class Motor:
         )
         return Result.ok()
 
-    def set_pos_vel(self, pos: float, vel: float, auto_switch_mode: bool = True) -> Result[None]:
+    def set_pos_vel(self, pos: float, vel: float, auto_mode: bool = True) -> Result[None]:
         """发送位置速度控制命令。
 
         Args:
             pos: 目标位置，单位 rad。
             vel: 目标速度，单位 rad/s。
-            auto_switch_mode: 是否自动切换到 POS_VEL 模式。
+            auto_mode: 是否自动切换到 POS_VEL 模式。
         """
         fault_result = self._ensure_no_fault()
         if not fault_result:
             return fault_result
-        mode_result = self._prepare_control_mode(ControlMode.POS_VEL, auto_switch_mode)
+        mode_result = self._prepare_control_mode(ControlMode.POS_VEL, auto_mode)
         if not mode_result:
             return mode_result
         self.bus.send(DamiaoProtocol.encode_pos_vel_control(self.slave_id, pos, vel))
         return Result.ok()
 
-    def set_velocity(self, vel: float, auto_switch_mode: bool = True) -> Result[None]:
+    def set_velocity(self, vel: float, auto_mode: bool = True) -> Result[None]:
         """发送速度控制命令。
 
         Args:
             vel: 目标速度，单位 rad/s。
-            auto_switch_mode: 是否自动切换到 VEL 模式。
+            auto_mode: 是否自动切换到 VEL 模式。
         """
         fault_result = self._ensure_no_fault()
         if not fault_result:
             return fault_result
-        mode_result = self._prepare_control_mode(ControlMode.VEL, auto_switch_mode)
+        mode_result = self._prepare_control_mode(ControlMode.VEL, auto_mode)
         if not mode_result:
             return mode_result
         self.bus.send(DamiaoProtocol.encode_velocity_control(self.slave_id, vel))
@@ -233,7 +248,7 @@ class Motor:
         pos: float,
         vel: float,
         current: float,
-        auto_switch_mode: bool = True,
+        auto_mode: bool = True,
     ) -> Result[None]:
         """发送力位混合控制命令。
 
@@ -241,16 +256,21 @@ class Motor:
             pos: 目标位置，单位 rad。
             vel: 电机协议要求的辅助速度项。
             current: 电机协议要求的电流或力矩项。
-            auto_switch_mode: 是否自动切换到 TORQUE_POS 模式。
+            auto_mode: 是否自动切换到 TORQUE_POS 模式。
         """
         fault_result = self._ensure_no_fault()
         if not fault_result:
             return fault_result
-        mode_result = self._prepare_control_mode(ControlMode.TORQUE_POS, auto_switch_mode)
+        mode_result = self._prepare_control_mode(ControlMode.TORQUE_POS, auto_mode)
         if not mode_result:
             return mode_result
         self.bus.send(DamiaoProtocol.encode_pos_force_control(self.slave_id, pos, vel, current))
         return Result.ok()
+
+    
+    # ===========================================================================
+    # 读写 电机状态/寄存器参数
+    # ===========================================================================
 
     def refresh_state(self, timeout: float = 0.5) -> Result[MotorState]:
         """请求最新状态，并返回更新后的缓存结果。"""
@@ -337,10 +357,15 @@ class Motor:
         self.bus.send(DamiaoProtocol.encode_save_params(self.slave_id))
         return Result.ok()
 
-    def _prepare_control_mode(self, target_mode: ControlMode, auto_switch_mode: bool) -> Result[None]:
+
+    # ===========================================================================
+    # 辅助函数
+    # ===========================================================================
+
+    def _prepare_control_mode(self, target_mode: ControlMode, auto_mode: bool) -> Result[None]:
         if self.control_mode == target_mode:
             return Result.ok()
-        if not auto_switch_mode:
+        if not auto_mode:
             return Result.err(f"Motor is not in {target_mode.name} mode", code="mode_mismatch")
 
         result = self.set_mode(target_mode)
