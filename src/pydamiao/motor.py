@@ -1,4 +1,5 @@
 
+import atexit
 import threading
 import time
 
@@ -6,15 +7,15 @@ from pydamiao.bus import SerialBus
 from pydamiao.protocol import DamiaoProtocol, ParsedMessage
 from pydamiao.result import Result
 from pydamiao.structs import (
+    MOTOR_LIMITS,
     ControlMode,
-    RegId,
-    MotorId,
     MotorFault,
+    MotorId,
+    MotorLimits,
     MotorReg,
     MotorState,
     MotorType,
-    MotorLimits,
-    MOTOR_LIMITS,
+    RegId,
 )
 
 
@@ -28,6 +29,7 @@ class Motor:
         slave_id: MotorId,
         master_id: MotorId = 0,
         name: str | None = None,
+        auto_disable: bool = True,
     ) -> None:
         """初始化绑定到共享串口总线的电机对象。
 
@@ -36,6 +38,8 @@ class Motor:
             motor_type: 用于选择协议限制的电机型号。
             slave_id: 电机接收 id。
             master_id: 某些固件配置下使用的可选反馈 id。
+            name: 可选的电机名称。
+            auto_disable: 是否在电机对象被销毁时自动禁用电机。
         """
         # 通讯总线
         self.bus = bus
@@ -45,6 +49,7 @@ class Motor:
         self.slave_id = slave_id
         self.master_id = master_id
         self.name = name
+        self.auto_disable = auto_disable
 
         # 可从电机中读取的状态
         self.pos = 0.0
@@ -68,6 +73,16 @@ class Motor:
         # 注册电机通讯总线
         self.bus.register_motor(self)
 
+        # 注册退出处理函数
+        atexit.register(self._cleanup)
+
+    def _cleanup(self):
+        """程序退出时的清理函数, 确保电机失能"""
+        try:
+            if self.enabled and self.auto_disable:
+                self.disable()
+        except Exception:
+            pass  # 忽略清理过程中的异常，避免影响程序正常退出
 
     # ===========================================================================
     # 电机对象的 Getter 方法
@@ -295,7 +310,7 @@ class Motor:
             return Result.err(result.error or "Failed to refresh state", code=result.code or "error")
         return Result.ok(self.get_state())
 
-    def read_param(self, reg_id: MotorReg, timeout: float = 0.5) -> Result[float | int]:
+    def read_param(self, reg_id: MotorReg, timeout: float = 0.2) -> Result[float | int]:
         """读取电机寄存器。
 
         Args:
@@ -442,7 +457,7 @@ class MotorManager:
         self.bus = bus
         self._motors_by_slave_id: dict[MotorId, Motor] = {}
         self._motors_by_name: dict[str, Motor] = {}
-
+    
     @property
     def motors(self) -> dict[MotorId, Motor]:
         """返回一份按 slave id 建立的电机映射副本。"""

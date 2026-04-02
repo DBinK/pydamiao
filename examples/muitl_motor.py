@@ -10,7 +10,6 @@ motor1 = manager.add_motor(MotorType.DM4310, 0x06, 0x16, name="wrist_3")
 motor2 = manager.add_motor(MotorType.DM4310, 0x05, 0x15, name="wrist_2")
 
 # 读取和修改电机参数示例
-
 print("Motor1:")
 print("sub_ver:", motor1.read_param(MotorReg.sub_ver).value)
 print("Gr:", motor1.read_param(MotorReg.Gr).value)
@@ -28,21 +27,22 @@ print("TMAX:", motor2.read_param(MotorReg.TMAX).value)
 # 使能电机
 manager.clear_error_all()
 manager.enable_all()
+motor1.set_zero()
 
 # 控制电机运动示例
-timeout = 5
+timeout = 15
 now = time.time()
 
 while (time.time() - now) < timeout:
 
     sin = math.sin(time.time())
 
-    # motor1.set_mit(sin * 0.5, 0, 2.5, 1.0, 0.0)
+    motor1.set_mit(sin * 0.2, 0, 5.5, 1.0, 0.0)
     motor2.set_pos_vel(sin * 0.5, 3)
 
     print(f"\r{motor1.name=}, {motor1.control_mode=}, {motor1.fault=}, {motor1.pos=:.2f}, {motor1.vel=:.2f}, {motor1.torque=:.2f}{' '*8}", end="")
 
     time.sleep(0.01)
 
-# 语句结束关闭串口
-bus.close()
+# 测试结束关闭电机
+# manager.disable_all()  # 程序结束前, 推荐手动失能所有电机
