@@ -8,6 +8,7 @@ bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
 manager = MotorManager(bus)
 motor1 = manager.add_motor(MotorType.DM4310, 0x06, 0x16, name="wrist_3")
 motor2 = manager.add_motor(MotorType.DM4310, 0x05, 0x15, name="wrist_2")
+motor3 = manager.add_motor(MotorType.DM4310, 0x04, 0x14, name="wrist_1")
 
 # 读取和修改电机参数示例
 print("Motor1:")
@@ -30,7 +31,7 @@ manager.enable_all()
 motor1.set_zero()
 
 # 控制电机运动示例
-timeout = 15
+timeout = 150
 now = time.time()
 
 while (time.time() - now) < timeout:
@@ -38,11 +39,12 @@ while (time.time() - now) < timeout:
     sin = math.sin(time.time())
 
     motor1.set_mit(sin * 0.2, 0, 5.5, 1.0, 0.0)
-    motor2.set_pos_vel(sin * 0.5, 3)
+    motor2.set_pos_vel(sin * 0.1, 3)
+    motor3.set_mit(sin * 0.2, 0, 5.5, 1.0, 0.0)
 
     print(f"\r{motor1.name=}, {motor1.control_mode=}, {motor1.fault=}, {motor1.pos=:.2f}, {motor1.vel=:.2f}, {motor1.torque=:.2f}{' '*8}", end="")
 
-    time.sleep(0.01)
+    time.sleep(0.001)
 
 # 测试结束关闭电机
 # manager.disable_all()  # 程序结束前, 推荐手动失能所有电机

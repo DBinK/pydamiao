@@ -153,7 +153,10 @@ class Motor:
         deadline = time.monotonic() + timeout_sec
         command = DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.DISABLE_CMD)
 
-        while True:  # (安全性) 尝试失能电机, 直到速度降到阈值以下 (达妙没有失能/失能的状态反馈)
+        for _ in range(3):  # (安全性) 先发送几次次失能命令
+            self._request_feedback(command, timeout=0.05)
+
+        while True:  # (安全性)  (达妙没有失能/失能的状态反馈)
             # 超时检测
             remaining = deadline - time.monotonic()
             if remaining <= 0:

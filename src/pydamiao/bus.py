@@ -1,11 +1,12 @@
 
 from queue import Empty, Queue
 import threading
+import time
 from typing import TYPE_CHECKING, Callable, Protocol
 
 from serial import Serial, SerialException
 
-from pydamiao.exceptions import ProtocolError, ReceiverThreadError, SerialBusError, SerialPortClosedError
+from pydamiao.exceptions import ReceiverThreadError, SerialBusError, SerialPortClosedError
 from pydamiao.protocol import DamiaoProtocol, ParsedMessage
 from pydamiao.result import Result
 
@@ -134,6 +135,11 @@ class SerialBus:
         with self._send_lock:
             try:
                 self.serial.write(data)
+
+                start_time = time.perf_counter()
+                while (time.perf_counter() - start_time) < 0.0002:
+                    pass  # 使用高精度忙等待实现200微秒延时
+
             except SerialException as exc:
                 raise SerialBusError(f"Failed to write to serial port: {exc}") from exc
 
