@@ -1,49 +1,48 @@
 import math
 import time
 
-from pydamiao import ControlMode, MotorManager, MotorReg, MotorType, SerialBus
+from pydamiao import MotorManager, MotorReg, MotorType, SerialBus
 
 # 创建串口总线和多电机管理器
-bus = SerialBus("COM3", baudrate=921600, timeout=0.01)
+bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
 manager = MotorManager(bus)
-motor1 = manager.add_motor(MotorType.DM4310, 0x06, 0x12)
-motor2 = manager.add_motor(MotorType.DM4310, 0x05, 0x12)
+motor1 = manager.add_motor(MotorType.DM4310, 0x06, 0x16, name="wrist_3")
+motor2 = manager.add_motor(MotorType.DM4310, 0x05, 0x15, name="wrist_2")
 
 # 读取和修改电机参数示例
-if motor1.set_mode(ControlMode.POS_VEL).is_ok:
-    print("switch POS_VEL success")
-if motor2.set_mode(ControlMode.VEL).is_ok:
-    print("switch VEL success")
 
-print("sub_ver:", motor1.read_param(MotorReg.sub_ver).unwrap())
-print("Gr:", motor1.read_param(MotorReg.Gr).unwrap())
-print("PMAX:", motor1.read_param(MotorReg.PMAX).unwrap())
-print("MST_ID:", motor1.read_param(MotorReg.MST_ID).unwrap())
-print("VMAX:", motor1.read_param(MotorReg.VMAX).unwrap())
-print("TMAX:", motor1.read_param(MotorReg.TMAX).unwrap())
+print("Motor1:")
+print("sub_ver:", motor1.read_param(MotorReg.sub_ver).value)
+print("Gr:", motor1.read_param(MotorReg.Gr).value)
+print("PMAX:", motor1.read_param(MotorReg.PMAX).value)
+print("MST_ID:", motor1.read_param(MotorReg.MST_ID).value)
+print("VMAX:", motor1.read_param(MotorReg.VMAX).value)
+print("TMAX:", motor1.read_param(MotorReg.TMAX).value)
 
 print("Motor2:")
-print("PMAX:", motor2.read_param(MotorReg.PMAX).unwrap())
-print("MST_ID:", motor2.read_param(MotorReg.MST_ID).unwrap())
-print("VMAX:", motor2.read_param(MotorReg.VMAX).unwrap())
-print("TMAX:", motor2.read_param(MotorReg.TMAX).unwrap())
+print("PMAX:", motor2.read_param(MotorReg.PMAX).value)
+print("MST_ID:", motor2.read_param(MotorReg.MST_ID).value)
+print("VMAX:", motor2.read_param(MotorReg.VMAX).value)
+print("TMAX:", motor2.read_param(MotorReg.TMAX).value)
 
-# 保存并使能电机
-motor1.save_params()
-motor2.save_params()
+# 使能电机
+manager.clear_error_all()
 manager.enable_all()
 
 # 控制电机运动示例
-i = 0
-while i < 10000:
-    q = math.sin(time.time())
-    i += 1
-    motor1.set_pos_vel(q * 8, 3)
-    motor2.set_velocity(8 * q)
+timeout = 5
+now = time.time()
 
-    time.sleep(0.001)
+while (time.time() - now) < timeout:
 
-motor2.set_velocity(0.0)
+    sin = math.sin(time.time())
+
+    # motor1.set_mit(sin * 0.5, 0, 2.5, 1.0, 0.0)
+    motor2.set_pos_vel(sin * 0.5, 3)
+
+    print(f"\r{motor1.name=}, {motor1.control_mode=}, {motor1.fault=}, {motor1.pos=:.2f}, {motor1.vel=:.2f}, {motor1.torque=:.2f}{' '*8}", end="")
+
+    time.sleep(0.01)
 
 # 语句结束关闭串口
 bus.close()

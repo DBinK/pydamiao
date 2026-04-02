@@ -27,6 +27,7 @@ class Motor:
         motor_type: MotorType,
         slave_id: MotorId,
         master_id: MotorId = 0,
+        name: str | None = None,
     ) -> None:
         """初始化绑定到共享串口总线的电机对象。
 
@@ -43,6 +44,7 @@ class Motor:
         self.motor_type = motor_type
         self.slave_id = slave_id
         self.master_id = master_id
+        self.name = name
 
         # 可从电机中读取的状态
         self.pos = 0.0
@@ -147,7 +149,7 @@ class Motor:
             if result:
                 state = self.get_state()
                 if abs(state.vel) <= 0.02:
-                    print("Motor stopped")
+                    print(f"Motor {self.slave_id} disabled")  # TODO: 添加日志
                     return Result.ok()
 
     def set_zero(self) -> Result[None]:
@@ -427,6 +429,7 @@ class Motor:
                     self.last_update_time = time.time()
 
 
+
 class MotorManager:
     """管理共享同一条总线的多个电机对象。"""
 
@@ -438,17 +441,24 @@ class MotorManager:
         """
         self.bus = bus
         self._motors_by_slave_id: dict[MotorId, Motor] = {}
-        self._motors_by_alias: dict[MotorId, Motor] = {}
+        self._motors_by_name: dict[str, Motor] = {}
 
     @property
     def motors(self) -> dict[MotorId, Motor]:
         """返回一份按 slave id 建立的电机映射副本。"""
         return dict(self._motors_by_slave_id)
 
-    def add_motor(self, motor_type: MotorType, slave_id: MotorId, master_id: MotorId = 0) -> Motor:
+    def add_motor(self, motor_type: MotorType, slave_id: MotorId, master_id: MotorId = 0, name: str | None = None) -> Motor:
         """创建、注册并返回一个新的电机对象。"""
-        self._ensure_aliases_available((slave_id,) if master_id == 0 else (slave_id, master_id))
-        motor = Motor(bus=self.bus, motor_type=motor_type, slave_id=slave_id, master_id=master_id)
+        # 检查 slave_id 是否已被占用
+        if slave_id in self._motors_by_slave_id:
+            raise ValueError(f"Motor slave id 0x{slave_id:X} is already registered")
+        
+        # 检查名字是否已被占用
+        if name is not None and name in self._motors_by_name:
+            raise ValueError(f"Motor name '{name}' is already registered")
+            
+        motor = Motor(bus=self.bus, motor_type=motor_type, slave_id=slave_id, master_id=master_id, name=name)
         self.register(motor)
         return motor
 
@@ -457,34 +467,41 @@ class MotorManager:
         if motor.bus is not self.bus:
             raise ValueError("MotorManager can only register motors that use the same SerialBus")
 
-        self._ensure_aliases_available(motor.alias_ids, current_motor=motor)
+        # 检查 slave_id 是否冲突
         existing = self._motors_by_slave_id.get(motor.slave_id)
         if existing is not None and existing is not motor:
             raise ValueError(f"Motor slave id 0x{motor.slave_id:X} is already registered")
 
-        self._motors_by_slave_id[motor.slave_id] = motor
-        for alias_id in motor.alias_ids:
-            owner = self._motors_by_alias.get(alias_id)
-            if owner is not None and owner is not motor:
-                raise ValueError(f"Motor id 0x{alias_id:X} is already registered")
-            self._motors_by_alias[alias_id] = motor
-        return motor
+        # 检查名字是否冲突
+        if motor.name is not None:
+            name_owner = self._motors_by_name.get(motor.name)
+            if name_owner is not None and name_owner is not motor:
+                raise ValueError(f"Motor name '{motor.name}' is already registered")
 
-    def _ensure_aliases_available(self, alias_ids: tuple[int, ...], current_motor: Motor | None = None) -> None:
-        for alias_id in alias_ids:
-            owner = self._motors_by_alias.get(alias_id)
-            if owner is not None and owner is not current_motor:
-                raise ValueError(f"Motor id 0x{alias_id:X} is already registered")
+        self._motors_by_slave_id[motor.slave_id] = motor
+        if motor.name is not None:
+            self._motors_by_name[motor.name] = motor
+        return motor
 
     def get(self, motor_id: MotorId) -> Motor | None:
-        """通过 slave id 或 master id 返回电机对象。"""
-        return self._motors_by_alias.get(motor_id)
+        """通过 slave id 返回电机对象。"""
+        return self._motors_by_slave_id.get(motor_id)
 
-    def __getitem__(self, motor_id: MotorId) -> Motor:
-        motor = self.get(motor_id)
-        if motor is None:
-            raise KeyError(motor_id)
-        return motor
+    def get_by_name(self, name: str) -> Motor | None:
+        """通过名字返回电机对象。"""
+        return self._motors_by_name.get(name)
+
+    def __getitem__(self, key: MotorId | str) -> Motor:
+        if isinstance(key, str):
+            motor = self.get_by_name(key)
+            if motor is None:
+                raise KeyError(key)
+            return motor
+        else:
+            motor = self.get(key)
+            if motor is None:
+                raise KeyError(key)
+            return motor
     
 
     # ===========================================================================
@@ -499,7 +516,7 @@ class MotorManager:
         }
 
     def get_all_status(self) -> dict[MotorId, MotorState]:
-        """返回所有已注册电机的当前状态。"""
+        """返回所有已注册电机缓存的当前状态。"""
         return {
             motor.slave_id: motor.get_state() 
             for motor in self._motors_by_slave_id.values()

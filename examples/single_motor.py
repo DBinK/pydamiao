@@ -5,7 +5,7 @@ from pydamiao import ControlMode, Motor, MotorReg, MotorType, SerialBus
 
 # 创建串口总线和电机对象
 bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
-motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16)
+motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16, name="wrist_3")
 
 # 读取和修改电机参数示例
 if motor.set_mode(ControlMode.POS_VEL):
@@ -18,7 +18,8 @@ print("TMAX:", motor.read_param(MotorReg.TMAX).value)
 print("TIMEOUT:", motor.read_param(MotorReg.TIMEOUT).value)
 
 # 推荐设置一下超时, 这样在我们停止发送控制命令时, 电机不会不受控地继续运动
-motor.write_param(MotorReg.TIMEOUT, 1000)
+motor.write_param(MotorReg.TIMEOUT, 0)
+motor.save_params()
 print("TIMEOUT:", motor.read_param(MotorReg.TIMEOUT).value)
 
 # 使能电机
@@ -31,8 +32,8 @@ for _ in range(1000):
     motor.set_velocity(vel)
 
     # print(f"{motor.rotor_temp=}, {motor.mos_temp=}, {motor.fault=}")
-    print(f"\r{motor.slave_id=}, {motor.control_mode=}, {motor.fault=}, {motor.pos=:.2f}, {motor.vel=:.2f}, {motor.torque=:.2f}{''*8}", end="")
+    print(f"\r{motor.name=}, {motor.control_mode=}, {motor.fault=}, {motor.pos=:.2f}, {motor.vel=:.2f}, {motor.torque=:.2f}{' '*8}", end="")
 
     time.sleep(0.01)
 
-# motor.disable()
+motor.disable()
