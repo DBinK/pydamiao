@@ -173,7 +173,7 @@ class Motor:
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.SET_ZERO_CMD))
         return Result.ok()
 
-    def clear_error(self) -> Result[None]:
+    def clean_error(self) -> Result[None]:
         """清除错误 (过热等错误)"""
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.CLEAN_ERROR_CMD))
         with self._state_lock:
@@ -571,9 +571,9 @@ class MotorManager:
             for motor in self._motors_by_slave_id.values()
         }
 
-    def clear_error_all(self) -> dict[MotorId, Result[None]]:
+    def clean_error_all(self) -> dict[MotorId, Result[None]]:
         """清除所有已注册电机的错误。"""
         return {
-            motor.slave_id: motor.clear_error()
+            motor.slave_id: motor.clean_error()
             for motor in self._motors_by_slave_id.values()
         }

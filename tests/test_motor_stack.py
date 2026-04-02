@@ -257,11 +257,11 @@ def test_motor_timeout_and_unsupported_paths_return_result_errors():
 
     try:
         timeout_result = motor.read_param(MotorReg.PMAX, timeout=0.05)
-        clear_result = motor.clear_error()
+        clean_result = motor.clean_error()
 
         assert not timeout_result.is_ok
         assert timeout_result.code == "timeout"
-        assert clear_result.is_ok
+        assert clean_result.is_ok
     finally:
         bus.close()
 

@@ -25,7 +25,7 @@ print("VMAX:", motor2.read_param(MotorReg.VMAX).value)
 print("TMAX:", motor2.read_param(MotorReg.TMAX).value)
 
 # 使能电机
-manager.clear_error_all()
+manager.clean_error_all()
 manager.enable_all()
 motor1.set_zero()
 
