@@ -1,577 +1,546 @@
-# src/pydamiao/motor.py
 
-from dataclasses import dataclass, field
-from time import sleep
+import threading
+import time
 
-import numpy as np
-from serial import Serial
-
-from pydamiao.types import (
-    MOTOR_LIMITS,
-    CanResp,
+from pydamiao.bus import SerialBus
+from pydamiao.protocol import DamiaoProtocol, ParsedMessage
+from pydamiao.result import Result
+from pydamiao.structs import (
     ControlMode,
-    Hex,
-    MotorLimits,
+    RegId,
+    MotorId,
+    MotorFault,
     MotorReg,
+    MotorState,
     MotorType,
-)
-from pydamiao.utils import (
-    float_to_uint,
-    float_to_uint8s,
-    int_to_uint8s,
-    uint8s_to_float,
-    uint8s_to_uint32,
-    uint_to_float,
+    MotorLimits,
+    MOTOR_LIMITS,
 )
 
 
-@dataclass
 class Motor:
-    """电机类数据容器，用于定义电机对象"""
-    # 电机参数
-    motor_type: MotorType
-    slave_id: Hex
-    master_id: Hex
+    """共享总线上的单个达妙电机高层控制对象。"""
+
+    def __init__(
+        self,
+        bus: SerialBus,
+        motor_type: MotorType,
+        slave_id: MotorId,
+        master_id: MotorId = 0,
+    ) -> None:
+        """初始化绑定到共享串口总线的电机对象。
+
+        Args:
+            bus: 用于通信的共享串口总线。
+            motor_type: 用于选择协议限制的电机型号。
+            slave_id: 电机接收 id。
+            master_id: 某些固件配置下使用的可选反馈 id。
+        """
+        # 通讯总线
+        self.bus = bus
+
+        # 对象属性
+        self.motor_type = motor_type
+        self.slave_id = slave_id
+        self.master_id = master_id
+
+        # 可从电机中读取的状态
+        self.pos = 0.0
+        self.vel = 0.0
+        self.torque = 0.0
+
+        self.mos_temp: int | None = None
+        self.rotor_temp: int | None = None
+
+        self.fault: MotorFault | None = None
+        self.param_cache: dict[RegId, float | int] = {}  # 可能有未知的寄存器
+
+        # 手动维护的状态
+        self.enabled = False
+        self.control_mode: ControlMode | None = None
+        self.last_update_time: float | None = None
+
+        # 状态锁
+        self._state_lock = threading.RLock()
+
+        # 注册电机通讯总线
+        self.bus.register_motor(self)
+
+
+    # ===========================================================================
+    # 电机对象的 Getter 方法
+    # ===========================================================================
+
+    @property
+    def alias_ids(self) -> tuple[int, ...]:
+        """返回所有可能把消息路由到本电机的 id。"""
+        if self.master_id != 0: 
+            return self.slave_id, self.master_id
+        return (self.slave_id,)
+
+    @property
+    def limits(self) -> MotorLimits:
+        """返回当前电机型号对应的协议限制。"""
+        return MOTOR_LIMITS[self.motor_type]
+
+    def get_state(self) -> MotorState:
+        """返回当前缓存中的最新电机状态。"""
+        with self._state_lock:
+            return MotorState(pos=self.pos, vel=self.vel, torque=self.torque)
+
+    def get_position(self) -> float:
+        """返回当前缓存中的最新位置。"""
+        with self._state_lock:
+            return self.pos
+
+    def get_velocity(self) -> float:
+        """返回当前缓存中的最新速度。"""
+        with self._state_lock:
+            return self.vel
+
+    def get_torque(self) -> float:
+        """返回当前缓存中的最新力矩。"""
+        with self._state_lock:
+            return self.torque
+
+    def get_mos_temp(self) -> int | None:
+        """返回当前缓存中的 MOS 温度。"""
+        with self._state_lock:
+            return self.mos_temp
+
+    def get_rotor_temp(self) -> int | None:
+        """返回当前缓存中的转子温度。"""
+        with self._state_lock:
+            return self.rotor_temp
+
+    def get_param(self, reg_id: RegId) -> float | int | None:
+        """返回缓存中的寄存器值；如果尚未读取则返回 ``None``。"""
+        with self._state_lock:
+            return self.param_cache.get(reg_id)
+
+
+    # ===========================================================================
+    # 基础控制函数
+    # ===========================================================================
+
+    def enable(self) -> Result[None]:
+        """使能电机。"""
+        self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.ENABLE_CMD))
+        with self._state_lock:
+            self.enabled = True
+        return Result.ok()
+
+    def disable(self) -> Result[None]:
+        """失能电机，并等待速度降到很小的阈值以下。"""
+        deadline = time.monotonic() + 1.0
+        command = DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.DISABLE_CMD)
+
+        while True:  # (安全性) 尝试失能电机, 直到速度降到阈值以下 (达妙没有失能/失能的状态反馈)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return Result.err("Motor did not slow down to the target threshold in time", code="disable_timeout")
+
+            result = self._wait_for_feedback(command, timeout=min(0.05, remaining))
+            with self._state_lock:
+                self.enabled = False
+
+            if result:
+                state = self.get_state()
+                if abs(state.vel) <= 0.02:
+                    print("Motor stopped")
+                    return Result.ok()
+
+    def set_zero(self) -> Result[None]:
+        """把当前位置设置为电机零点。"""
+        self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.SET_ZERO_CMD))
+        return Result.ok()
+
+    def clear_error(self) -> Result[None]:
+        """清除错误 (过热等错误)"""
+        self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.CLEAN_ERROR_CMD))
+        with self._state_lock:
+            self.fault = MotorFault.NONE
+        return Result.ok()
+
+
+    # ===========================================================================
+    # 运动控制函数
+    # ===========================================================================
+
+    def set_mode(self, mode: ControlMode, timeout: float = 1.0) -> Result[ControlMode]:
+        """切换电机控制模式。
+
+        Args:
+            mode: 目标控制模式。
+            timeout: 等待写入确认的最大时间。
+        """
+        result = self.write_param(MotorReg.CTRL_MODE, int(mode), timeout=timeout)
+        if not result:
+            return Result.err(result.error or "Failed to switch mode", code=result.code or "error")
+
+        with self._state_lock:
+            self.control_mode = mode
+        return Result.ok(mode)
+
+    def set_mit(
+        self,
+        pos: float,
+        vel: float,
+        kp: float,
+        kd: float,
+        torque: float,
+        auto_mode: bool = True,
+    ) -> Result[None]:
+        """发送 MIT 控制命令。
+
+        Args:
+            pos: 目标位置，单位 rad。
+            vel: 目标速度，单位 rad/s。
+            kp: 位置增益。
+            kd: 速度增益。
+            torque: 前馈力矩命令。
+            auto_mode: 是否自动切换到 MIT 模式。
+        """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
+        mode_result = self._prepare_control_mode(ControlMode.MIT, auto_mode)
+        if not mode_result:
+            return mode_result
+        self.bus.send(
+            DamiaoProtocol.encode_mit_control(
+                self.slave_id,
+                self.limits,
+                kp=kp,
+                kd=kd,
+                pos=pos,
+                vel=vel,
+                torque=torque,
+            )
+        )
+        return Result.ok()
+
+    def set_pos_vel(self, pos: float, vel: float, auto_mode: bool = True) -> Result[None]:
+        """发送位置速度控制命令。
+
+        Args:
+            pos: 目标位置，单位 rad。
+            vel: 目标速度，单位 rad/s。
+            auto_mode: 是否自动切换到 POS_VEL 模式。
+        """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
+        mode_result = self._prepare_control_mode(ControlMode.POS_VEL, auto_mode)
+        if not mode_result:
+            return mode_result
+        self.bus.send(DamiaoProtocol.encode_pos_vel_control(self.slave_id, pos, vel))
+        return Result.ok()
+
+    def set_velocity(self, vel: float, auto_mode: bool = True) -> Result[None]:
+        """发送速度控制命令。
+
+        Args:
+            vel: 目标速度，单位 rad/s。
+            auto_mode: 是否自动切换到 VEL 模式。
+        """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
+        mode_result = self._prepare_control_mode(ControlMode.VEL, auto_mode)
+        if not mode_result:
+            return mode_result
+        self.bus.send(DamiaoProtocol.encode_velocity_control(self.slave_id, vel))
+        return Result.ok()
+
+    def set_pos_force(
+        self,
+        pos: float,
+        vel: float,
+        current: float,
+        auto_mode: bool = True,
+    ) -> Result[None]:
+        """发送力位混合控制命令。
+
+        Args:
+            pos: 目标位置，单位 rad。
+            vel: 电机协议要求的辅助速度项。
+            current: 电机协议要求的电流或力矩项。
+            auto_mode: 是否自动切换到 TORQUE_POS 模式。
+        """
+        fault_result = self._ensure_no_fault()
+        if not fault_result:
+            return fault_result
+        mode_result = self._prepare_control_mode(ControlMode.TORQUE_POS, auto_mode)
+        if not mode_result:
+            return mode_result
+        self.bus.send(DamiaoProtocol.encode_pos_force_control(self.slave_id, pos, vel, current))
+        return Result.ok()
+
     
-    # 电机状态
-    pos: float = 0.0
-    vel: float = 0.0
-    torque: float = 0.0
+    # ===========================================================================
+    # 读写 电机状态/寄存器参数
+    # ===========================================================================
+
+    def refresh_state(self, timeout: float = 0.5) -> Result[MotorState]:
+        """请求最新状态，并返回更新后的缓存结果。"""
+        result = self.bus.request(
+            DamiaoProtocol.encode_refresh_state(self.slave_id),
+            matcher=lambda message: message.kind == "status" and self._matches_message(message),
+            timeout=timeout,
+        )
+        if not result:
+            return Result.err(result.error or "Failed to refresh state", code=result.code or "error")
+        return Result.ok(self.get_state())
+
+    def read_param(self, reg_id: MotorReg, timeout: float = 0.5) -> Result[float | int]:
+        """读取电机寄存器。
+
+        Args:
+            reg_id: 要读取的寄存器 id。
+            timeout: 等待响应的最大时间。
+        """
+        result = self.bus.request(
+            DamiaoProtocol.encode_read_param(self.slave_id, reg_id),
+            matcher=lambda message: (
+                message.kind == "param"
+                and message.reg_id == int(reg_id)
+                and self._matches_message(message)
+            ),
+            timeout=timeout,
+        )
+        if not result:
+            return Result.err(result.error or "Failed to read motor parameter", code=result.code or "error")
+        if result.value is None:
+            return Result.err("Motor did not return a parameter value", code="invalid_response")
+        return Result.ok(result.value.value)
+
+    def write_param(self, reg_id: MotorReg, value: float | int, timeout: float = 1.0) -> Result[float | int]:
+        """写入电机寄存器，并校验回读响应。
+
+        Args:
+            reg_id: 要写入的寄存器 id。
+            value: 要发送给电机的值。
+            timeout: 等待响应的最大时间。
+        """
+        result = self.bus.request(
+            DamiaoProtocol.encode_write_param(self.slave_id, reg_id, value),
+            matcher=lambda message: (
+                message.kind == "param"
+                and message.reg_id == int(reg_id)
+                and self._matches_message(message)
+            ),
+            timeout=timeout,
+        )
+        if not result:
+            return Result.err(result.error or "Failed to write motor parameter", code=result.code or "error")
+        if result.value is None:
+            return Result.err("Motor did not return a parameter value", code="invalid_response")
+
+        returned = result.value.value
+        if returned is None:
+            return Result.err("Motor did not return a parameter value", code="invalid_response")
+
+        if isinstance(returned, float):
+            if abs(returned - float(value)) > 0.1:
+                return Result.err("Motor parameter verification failed", code="mismatch")
+        elif returned != int(value):
+            return Result.err("Motor parameter verification failed", code="mismatch")
+
+        if int(reg_id) == int(MotorReg.CTRL_MODE):
+            with self._state_lock:
+                self.control_mode = ControlMode(int(returned))
+        return Result.ok(returned)
+
+    def save_params(self, disable: bool=False) -> Result[None]:
+        """ 把当前参数集保存到电机 flash
+            Args:
+                disable: 是否在保存参数时自动失能电机 (仅失能是可以保存参数)
+            Note:
+                1. 存储参数只在失能模式下生效。
+                2. 存储参数时将一次性保留全部参数。
+                3. 该操作将参数写入片内flash中，每次操作时间最大为30ms，请注意留足足够的时间。
+                4. flash擦写次数约1万次，请不要频繁发送“存储参数”指令。
+        """
+        if disable:
+            self.disable()
+        self.bus.send(DamiaoProtocol.encode_save_params(self.slave_id))
+        return Result.ok()
+
+
+    # ===========================================================================
+    # 辅助函数
+    # ===========================================================================
+
+    def _prepare_control_mode(self, target_mode: ControlMode, auto_mode: bool) -> Result[None]:
+        if self.control_mode == target_mode:
+            return Result.ok()
+        if not auto_mode:
+            return Result.err(f"Motor is not in {target_mode.name} mode", code="mode_mismatch")
+
+        result = self.set_mode(target_mode)
+        if not result:
+            return Result.err(result.error or "Failed to switch control mode", code=result.code or "error")
+        return Result.ok()
+
+    def _ensure_no_fault(self) -> Result[None]:
+        with self._state_lock:
+            fault = self.fault
+        if fault is None or fault == MotorFault.NONE:
+            return Result.ok()
+        return Result.err(f"Motor is in fault state: {fault.name}", code="fault")
+
+    def _wait_for_feedback(self, command: bytes, timeout: float) -> Result[ParsedMessage]:
+        """发送命令并等待属于当前电机的任意反馈。"""
+        return self.bus.request(
+            command,
+            matcher=self._matches_message,
+            timeout=timeout,
+        )
+
+    def _matches_message(self, message: ParsedMessage) -> bool:
+        if self.slave_id in message.route_ids:
+            return True
+        if self.master_id != 0 and self.master_id in message.route_ids:
+            return True
+        return message.slave_id == self.slave_id
+
+    def _handle_message(self, message: ParsedMessage) -> None:
+        if message.kind == "status":
+            pos, vel, torque = DamiaoProtocol.decode_status(message.data, self.limits)
+            with self._state_lock:
+                self.pos = pos
+                self.vel = vel
+                self.torque = torque
+                self.fault = message.fault
+                self.mos_temp = message.mos_temp
+                self.rotor_temp = message.rotor_temp
+                if message.fault not in (None, MotorFault.NONE):
+                    self.enabled = False
+                self.last_update_time = time.time()
+            return
+
+        if message.kind == "param" and message.reg_id is not None:
+            with self._state_lock:
+                if message.value is not None:
+                    self.param_cache[message.reg_id] = message.value
+                    self.last_update_time = time.time()
+
+
+class MotorManager:
+    """管理共享同一条总线的多个电机对象。"""
+
+    def __init__(self, bus: SerialBus) -> None:
+        """初始化多电机管理器。
+
+        Args:
+            bus: 所有托管电机共用的串口总线。
+        """
+        self.bus = bus
+        self._motors_by_slave_id: dict[MotorId, Motor] = {}
+        self._motors_by_alias: dict[MotorId, Motor] = {}
+
+    @property
+    def motors(self) -> dict[MotorId, Motor]:
+        """返回一份按 slave id 建立的电机映射副本。"""
+        return dict(self._motors_by_slave_id)
+
+    def add_motor(self, motor_type: MotorType, slave_id: MotorId, master_id: MotorId = 0) -> Motor:
+        """创建、注册并返回一个新的电机对象。"""
+        self._ensure_aliases_available((slave_id,) if master_id == 0 else (slave_id, master_id))
+        motor = Motor(bus=self.bus, motor_type=motor_type, slave_id=slave_id, master_id=master_id)
+        self.register(motor)
+        return motor
+
+    def register(self, motor: Motor) -> Motor:
+        """把一个已经创建好的电机对象注册到管理器中。"""
+        if motor.bus is not self.bus:
+            raise ValueError("MotorManager can only register motors that use the same SerialBus")
+
+        self._ensure_aliases_available(motor.alias_ids, current_motor=motor)
+        existing = self._motors_by_slave_id.get(motor.slave_id)
+        if existing is not None and existing is not motor:
+            raise ValueError(f"Motor slave id 0x{motor.slave_id:X} is already registered")
+
+        self._motors_by_slave_id[motor.slave_id] = motor
+        for alias_id in motor.alias_ids:
+            owner = self._motors_by_alias.get(alias_id)
+            if owner is not None and owner is not motor:
+                raise ValueError(f"Motor id 0x{alias_id:X} is already registered")
+            self._motors_by_alias[alias_id] = motor
+        return motor
+
+    def _ensure_aliases_available(self, alias_ids: tuple[int, ...], current_motor: Motor | None = None) -> None:
+        for alias_id in alias_ids:
+            owner = self._motors_by_alias.get(alias_id)
+            if owner is not None and owner is not current_motor:
+                raise ValueError(f"Motor id 0x{alias_id:X} is already registered")
+
+    def get(self, motor_id: MotorId) -> Motor | None:
+        """通过 slave id 或 master id 返回电机对象。"""
+        return self._motors_by_alias.get(motor_id)
+
+    def __getitem__(self, motor_id: MotorId) -> Motor:
+        motor = self.get(motor_id)
+        if motor is None:
+            raise KeyError(motor_id)
+        return motor
     
-    enabled: bool = False
-    control_mode: ControlMode | None = None
-    param_cache: dict[MotorReg, int | float] = field(default_factory=dict)
-    
-    def update_from_controller(self, pos: float, vel: float, torque: float):
-        """从 Controller 被动接受更新数据"""
-        self.pos = pos
-        self.vel = vel
-        self.torque = torque
 
-    def get_param(self, reg_id: MotorReg) -> float | int | None:
-        """获取电机内部参数，需要在 Controller 提前读取"""
-        return self.param_cache.get(reg_id)
+    # ===========================================================================
+    # 多电机状态/参数
+    # ===========================================================================   
+     
+    def get_all_params(self) -> dict[MotorId, dict[RegId, float | int]]:
+        """获取所有已注册电机的已缓存的寄存器参数。"""
+        return {
+            motor.slave_id: motor.param_cache
+            for motor in self._motors_by_slave_id.values()
+        }
 
+    def get_all_status(self) -> dict[MotorId, MotorState]:
+        """返回所有已注册电机的当前状态。"""
+        return {
+            motor.slave_id: motor.get_state() 
+            for motor in self._motors_by_slave_id.values()
+        }
 
-class MotorController:
-    """电机控制器类，用于控制电机"""
-
-    tx_frame = np.array(
-        object=[
-            0x55, 0xAA, # 帧头
-            0x1e,       # 帧长
-            0x03,       # 命令
-            0x01, 0x00, 0x00, 0x00,  # 发送次数			
-            0x0A, 0x00, 0x00, 0x00,  # 时间间隔			
-            0x00,                    # ID类型：0x00 标准帧, 0x01扩展帧 
-            0x00, 0x00, 0x00, 0x00,  # CAN ID			
-            0x00,                    # 帧类型：0x00 数据帧, 0x01远程帧
-            0x08,       # len
-            0x00,       # idAcc
-            0x00,       # dataAcc
-            0, 0, 0, 0, 0, 0, 0, 0,  # data[len]	
-            0x00        # CRC 校验 (CRC 底层暂时未解析 可以任意数字填充)
-        ], 
-        dtype=np.uint8)  # fmt: off
-
-    # ==============================================================================
-    # 初始化与电机管理
-    # ==============================================================================
-
-    def __init__(self, serial_device: Serial):
-        """初始化电机控制器
+    def refresh_all_status(self) -> dict[MotorId, MotorState]:
+        """刷新所有已注册电机的状态。"""
+        for motor in self._motors_by_slave_id.values():
+            motor.refresh_state()
         
-        Args:
-            serial_device: 串口对象
-        """
-        self.serial = serial_device
-        self.motors_map: dict[Hex, Motor] = dict()
-        self.rx_buf = bytes()  # 存储数据
-        if self.serial.is_open:  # 打开串口
-            print("Serial port is open")
-            serial_device.close()
-        self.serial.open()
-
-    def add_motor(self, motor: Motor):
-        """添加电机到电机控制器
-        
-        Args:
-            motor: 电机对象
-            
-        Returns:
-            True
-        """
-        self.motors_map[motor.slave_id] = motor
-        if motor.master_id != 0:
-            self.motors_map[motor.master_id] = motor
-        return True
+        return self.get_all_status()
 
 
-    # ==============================================================================
-    # 电机基础控制命令
-    # ==============================================================================
+    # ===========================================================================
+    # 基础控制
+    # ===========================================================================
 
-    def enable(self, motor: Motor):
-        """使能电机
-        
-        最好在上电后几秒后再使能电机
-        
-        Args:
-            motor: 电机对象
-        """
-        self.__basic_cmd(motor, np.uint8(0xFC))
-        sleep(0.1)
-        self.recv()  # 接收来自串口的数据
-        motor.enabled = True  # 更新电机使能状态
+    def enable_all(self) -> dict[MotorId, Result[None]]:
+        """使能所有已注册电机。"""
+        return {
+            motor.slave_id: motor.enable()
+            for motor in self._motors_by_slave_id.values()
+        }
 
-    def disable(self, motor: Motor):
-        """失能电机
-        
-        Args:
-            motor: 电机对象
-        """
-        self.__basic_cmd(motor, np.uint8(0xFD))
-        sleep(0.1)
-        self.recv()  # 接收来自串口的数据
-        motor.enabled = False  # 更新电机使能状态
+    def disable_all(self) -> dict[MotorId, Result[None]]:
+        """失能所有已注册电机。"""
+        return {
+            motor.slave_id: motor.disable()
+            for motor in self._motors_by_slave_id.values()
+        }
 
-    def set_zero_position(self, motor: Motor):
-        """设置电机零位
-        
-        Args:
-            motor: 电机对象
-        """
-        self.__basic_cmd(motor, np.uint8(0xFE))
-        sleep(0.1)
-        self.recv()  # 接收来自串口的数据
+    def set_zero_all(self) -> dict[MotorId, Result[None]]:
+        """将所有已注册电机的零点设置为当前位置。"""
+        return {
+            motor.slave_id: motor.set_zero()
+            for motor in self._motors_by_slave_id.values()
+        }
 
-
-    # ==============================================================================
-    # 各控制模式函数
-    # ==============================================================================
-
-    def control_mit(
-        self, motor: Motor, kp: float, kd: float, pos_cmd: float, vel_cmd: float, torque_cmd: float
-    ):
-        """MIT控制模式函数
-        
-        Args:
-            motor: 电机对象
-            kp: 比例系数
-            kd: 微分系数
-            pos_cmd: 期望位置
-            vel_cmd: 期望速度
-            torque_cmd: 期望力矩
-        """
-        if motor.slave_id not in self.motors_map:
-            print("controlMIT ERROR : Motor ID not found")
-            return
-        kp_uint = float_to_uint(kp, 0, 500, 12)
-        kd_uint = float_to_uint(kd, 0, 5, 12)
-        motor_type = motor.motor_type
-        limits = MOTOR_LIMITS[motor_type]
-        POS_MAX = limits.POS_MAX
-        VEL_MAX = limits.VEL_MAX
-        TORQUE_MAX = limits.TORQUE_MAX
-        pos_uint = float_to_uint(pos_cmd, -POS_MAX, POS_MAX, 16)
-        vel_uint = float_to_uint(vel_cmd, -VEL_MAX, VEL_MAX, 12)
-        torque_uint = float_to_uint(torque_cmd, -TORQUE_MAX, TORQUE_MAX, 12)
-        tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
-        tx_buf[0] = (pos_uint >> 8) & 0xFF
-        tx_buf[1] = pos_uint & 0xFF
-        tx_buf[2] = vel_uint >> 4
-        tx_buf[3] = ((vel_uint & 0xF) << 4) | ((kp_uint >> 8) & 0xF)
-        tx_buf[4] = kp_uint & 0xFF
-        tx_buf[5] = kd_uint >> 4
-        tx_buf[6] = ((kd_uint & 0xF) << 4) | ((torque_uint >> 8) & 0xF)
-        tx_buf[7] = torque_uint & 0xFF
-        self.__send_data(motor.slave_id, tx_buf)
-        self.recv()  # 接收来自串口的数据
-
-    def control_mit_delay(
-        self, motor: Motor, kp: float, kd: float, pos_cmd: float, vel_cmd: float, torque_cmd: float,
-        delay: float,
-    ):
-        """MIT控制模式函数（带延迟）
-        
-        Args:
-            motor: 电机对象
-            kp: 比例系数
-            kd: 微分系数
-            pos_cmd: 期望位置
-            vel_cmd: 期望速度
-            torque_cmd: 期望力矩
-            delay: 延迟时间，单位秒
-        """
-        self.control_mit(motor, kp, kd, pos_cmd, vel_cmd, torque_cmd)
-        sleep(delay)
-
-    def control_pos_vel(self, motor: Motor, pos_cmd: float, vel_cmd: float):
-        """位置速度控制模式
-        
-        Args:
-            motor: 电机对象
-            pos_cmd: 期望位置
-            vel_cmd: 期望速度
-        """
-        if motor.slave_id not in self.motors_map:
-            print("Control Pos_Vel Error : Motor ID not found")
-            return
-        motor_id = 0x100 + motor.slave_id
-        tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
-        pos_cmd_u8s = float_to_uint8s(pos_cmd)
-        vel_cmd_u8s  = float_to_uint8s(vel_cmd)
-        tx_buf[0:4] = pos_cmd_u8s
-        tx_buf[4:8] = vel_cmd_u8s 
-        self.__send_data(motor_id, tx_buf)
-        # time.sleep(0.001)
-        self.recv()  # 接收来自串口的数据
-
-    def control_vel(self, motor: Motor, vel_cmd: float):
-        """速度控制模式
-        
-        Args:
-            motor: 电机对象
-            vel_cmd: 期望速度
-        """
-        if motor.slave_id not in self.motors_map:
-            print("control_VEL ERROR : Motor ID not found")
-            return
-        motor_id = 0x200 + motor.slave_id
-        tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
-        vel_cmd_u8s = float_to_uint8s(vel_cmd)
-        tx_buf[0:4] = vel_cmd_u8s
-        self.__send_data(motor_id, tx_buf)
-        self.recv()  # 接收来自串口的数据
-
-    def control_pos_force(self, motor: Motor, pos_cmd: float, vel_cmd: float, cur_cmd: float):
-        """EMIT控制模式（力位混合模式）
-        
-        Args:
-            motor: 电机对象
-            pos_cmd: 期望位置，单位为rad
-            vel_cmd: 期望速度，为放大100倍
-            cur_cmd: 期望电流标幺值放大10000倍
-        """
-        if motor.slave_id not in self.motors_map:
-            print("control_pos_vel ERROR : Motor ID not found")
-            return
-        motor_id = 0x300 + motor.slave_id
-        tx_buf = np.array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], np.uint8)
-        pos_cmd_u8s = float_to_uint8s(pos_cmd)
-        tx_buf[0:4] = pos_cmd_u8s
-        vel_cmd_uint = np.uint16(vel_cmd)
-        cur_cmd_uint = np.uint16(cur_cmd)
-        tx_buf[4] = vel_cmd_uint & 0xFF
-        tx_buf[5] = vel_cmd_uint >> 8
-        tx_buf[6] = cur_cmd_uint & 0xFF
-        tx_buf[7] = cur_cmd_uint >> 8
-        self.__send_data(motor_id, tx_buf)
-        self.recv()  # 接收来自串口的数据
-
-
-    # ==============================================================================
-    # 参数管理
-    # ==============================================================================
-
-    def refresh_motor_status(self, motor: Motor):
-        """获取电机状态
-        
-        Args:
-            motor: 电机对象
-        """
-        can_id_l = motor.slave_id & 0xFF  # id 低8位
-        can_id_h = (motor.slave_id >> 8) & 0xFF  # id 高8位
-        tx_buf = np.array(
-            [
-                np.uint8(can_id_l),
-                np.uint8(can_id_h),
-                0xCC,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ],
-            np.uint8,
-        )
-        self.__send_data(0x7FF, tx_buf)  # 发送查询请求
-        self.recv()  # 接收来自串口的数据
-
-    def read_motor_param(self, motor: Motor, reg_id: MotorReg):
-        """读取电机内部参数（如版本号等）
-        
-        Args:
-            motor: 电机对象
-            reg_id: 电机寄存器参数
-            
-        Returns:
-            电机寄存器参数的值
-        """
-        max_retries = 20       # 最大重试次数
-        retry_interval = 0.05  # 重试间隔
-        self.__read_motor_param(motor, reg_id)
-        for _ in range(max_retries):
-            sleep(retry_interval)
-            self.recv_set_param_data()
-            if motor.slave_id in self.motors_map:
-                if reg_id in self.motors_map[motor.slave_id].param_cache:
-                    return self.motors_map[motor.slave_id].param_cache[reg_id]
-        return None
-
-    def change_motor_param(self, motor: Motor, reg_id: MotorReg, data: float | int):
-        """改变电机寄存器参数的值, 仅当前生效, 需要保持参数请用 save_motor_param()
-        
-        Args:
-            motor: 电机对象
-            reg_id: 电机寄存器参数
-            data: 电机寄存器参数的值
-            
-        Returns:
-            True表示成功，False表示失败
-        """
-        max_retries = 20
-        retry_interval = 0.05  # 重试间隔
-
-        self.__write_motor_param(motor, reg_id, data)
-        for _ in range(max_retries):
-            self.recv_set_param_data()
-            if (
-                motor.slave_id in self.motors_map
-                and reg_id in self.motors_map[motor.slave_id].param_cache
-            ):
-                if (
-                    abs(self.motors_map[motor.slave_id].param_cache[reg_id] - data)
-                    < 0.1
-                ):
-                    return True
-                else:
-                    return False
-            sleep(retry_interval)
-        return False
-
-    def save_motor_param(self, motor: Motor):
-        """保存所有参数到 flash
-        
-        Args:
-            motor: 电机对象
-        """
-        can_id_l = motor.slave_id & 0xFF  # id 低8位
-        can_id_h = (motor.slave_id >> 8) & 0xFF  # id 高8位
-        tx_buf = np.array(
-            [
-                np.uint8(can_id_l),
-                np.uint8(can_id_h),
-                0xAA,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ],
-            np.uint8,
-        )
-        self.disable(motor)  # 保存前先失能电机
-        self.__send_data(0x7FF, tx_buf)
-        sleep(0.001)
-
-    def change_limit_param(self, motor_type: MotorType, PMAX: float, VMAX: float, TMAX: float):
-        """改变电机的PMAX VMAX TMAX
-        
-        Args:
-            motor_type: 电机类型
-            PMAX: 电机的PMAX
-            VMAX: 电机的VMAX
-            TMAX: 电机的TMAX
-        """
-        MOTOR_LIMITS[motor_type] = MotorLimits(PMAX, VMAX, TMAX)
-        
-    def switch_control_mode(self, motor: Motor, control_mode: ControlMode):
-        """切换电机控制模式
-        
-        Args:
-            motor: 电机对象
-            control_mode: 电机控制模式，如MIT:ControlMode.MIT MIT模式
-            
-        Returns:
-            True表示成功，False表示失败
-        """
-        max_retries = 20
-        retry_interval = 0.1  # 重试间隔
-        # reg_id = 10
-        reg_id = MotorReg.CTRL_MODE
-        self.__write_motor_param(motor, reg_id, control_mode)
-        for _ in range(max_retries):
-            sleep(retry_interval)
-            self.recv_set_param_data()
-            if motor.slave_id in self.motors_map:
-                if reg_id in self.motors_map[motor.slave_id].param_cache:
-                    if (
-                        abs(
-                            self.motors_map[motor.slave_id].param_cache[reg_id]
-                            - control_mode
-                        )
-                        < 0.1
-                    ):
-                        motor.control_mode = control_mode  # 更新控制模式
-                        return True
-                    else:
-                        return False
-        return False
-
-    # ==============================================================================
-    # 数据收发与处理（底层辅助）
-    # ==============================================================================
-
-    def recv(self):
-        """从串口接收数据"""
-        read_data = self.serial.read_all()   # 把上次没有解析完的剩下的也放进来
-        data_recv = b"".join(
-            [self.rx_buf, read_data if read_data is not None else b""]
-        )
-        packets = self.__extract_packets(data_recv)
-        for packet in packets:
-            data = packet[7:15]
-            can_id = (packet[6] << 24) | (packet[5] << 16) | (packet[4] << 8) | packet[3]
-            can_cmd = CanResp(packet[1])
-            self.__process_packet(data, can_id, can_cmd)
-
-    def recv_set_param_data(self):
-        """从串口接收设置参数数据"""
-        data_recv = self.serial.read_all()
-        if data_recv is None:
-            data_recv = b""
-        packets = self.__extract_packets(data_recv)
-        for packet in packets:
-            data = packet[7:15]
-            can_id = (packet[6] << 24) | (packet[5] << 16) | (packet[4] << 8) | packet[3]
-            can_cmd = CanResp(packet[1])
-            self.__process_set_param_packet(data, can_id, can_cmd)
-
-    def __extract_packets(self, data: bytes) -> list[bytes]:
-        """提取数据包"""
-        frames = []
-        header = 0xAA
-        tail = 0x55
-        frame_length = 16
-        i = 0
-        remainder_pos = 0
-
-        while i <= len(data) - frame_length:
-            if data[i] == header and data[i + frame_length - 1] == tail:
-                frame = data[i : i + frame_length]
-                frames.append(frame)
-                i += frame_length
-                remainder_pos = i
-            else:
-                i += 1
-        self.rx_buf = data[remainder_pos:]
-        return frames
-
-    def __process_packet(self, data: bytes, can_id: Hex, can_cmd: CanResp) -> None:
-        """处理数据包, 此处会更新数据到对应 Motor 对象"""
-        if can_cmd == CanResp.RECEIVE_SUCCESS:  # CAN 命令 //00 心跳, 0x01 接收失败, 0x11 接收成功, 0x02 发送失败, 0x12 发送成功 0x03 
-            # 确定目标电机ID
-            if can_id != 0x00:
-                target_id = can_id
-            else:
-                target_id = data[0] & 0x0F
-
-            # 仅当目标电机存在时处理
-            if target_id in self.motors_map:
-                pos_uint = np.uint16((np.uint16(data[1]) << 8) | data[2])
-                vel_uint = np.uint16((np.uint16(data[3]) << 4) | (data[4] >> 4))
-                torque_uint = np.uint16(((data[4] & 0xF) << 8) | data[5])
-                motor_type_recv = self.motors_map[target_id].motor_type
-                limits = MOTOR_LIMITS[motor_type_recv]
-                POS_MAX = limits.POS_MAX
-                VEL_MAX = limits.VEL_MAX
-                TORQUE_MAX = limits.TORQUE_MAX
-                recv_pos = uint_to_float(pos_uint, -POS_MAX, POS_MAX, 16)
-                recv_vel = uint_to_float(vel_uint, -VEL_MAX, VEL_MAX, 12)
-                recv_torque = uint_to_float(torque_uint, -TORQUE_MAX, TORQUE_MAX, 12)
-                self.motors_map[target_id].update_from_controller(
-                    float(recv_pos), float(recv_vel), float(recv_torque)
-                )
-
-    def __process_set_param_packet(self, data: bytes, can_id: Hex, can_cmd: CanResp) -> None:
-        """处理设置参数数据包"""
-        if can_cmd == CanResp.RECEIVE_SUCCESS and (data[2] == 0x33 or data[2] == 0x55):
-            master_id = can_id
-            slave_id = (data[1] << 8) | data[0]
-            if can_id == 0x00:  # 防止有人把master_id设为0稳一手
-                master_id = slave_id
-
-            if master_id not in self.motors_map:
-                if slave_id not in self.motors_map:
-                    return
-                else:
-                    master_id = slave_id
-
-            reg_id = MotorReg(data[3])
-
-            # 读取参数得到的数据
-            if MotorReg.is_int_type(reg_id):
-                # uint32类型
-                num = uint8s_to_uint32(data[4], data[5], data[6], data[7])
-                self.motors_map[master_id].param_cache[reg_id] = num
-            else:
-                # float类型
-                num = uint8s_to_float(data[4], data[5], data[6], data[7])
-                self.motors_map[master_id].param_cache[reg_id] = num
-
-    def __send_data(self, motor_id: Hex, data: np.ndarray) -> None:
-        """发送数据到电机"""
-        self.tx_frame[13] = motor_id & 0xFF
-        self.tx_frame[14] = (motor_id >> 8) & 0xFF  # id 高8位
-        self.tx_frame[21:29] = data
-        self.serial.write(bytes(self.tx_frame.T))
-
-    def __basic_cmd(self, motor: Motor, state_cmd: np.uint8):
-        """基本命令, 使能/失能/设置零点"""
-        tx_buf = np.array([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, state_cmd], np.uint8)
-        self.__send_data(motor.slave_id, tx_buf)
-
-    def __read_motor_param(self, motor: Motor, reg_id: MotorReg):
-        """读取电机寄存器中的值"""
-        can_id_l = motor.slave_id & 0xFF  # id 低8位
-        can_id_h = (motor.slave_id >> 8) & 0xFF  # id 高8位
-        tx_buf = np.array(
-            [
-                np.uint8(can_id_l),
-                np.uint8(can_id_h),
-                0x33,
-                np.uint8(reg_id),
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ],
-            np.uint8,
-        )
-        self.__send_data(0x7FF, tx_buf)
-
-    def __write_motor_param(self, motor: Motor, reg_id: MotorReg, data: float | int):
-        """ 写入电机寄存器中的值 """
-        can_id_l = motor.slave_id & 0xFF  # id 低8位
-        can_id_h = (motor.slave_id >> 8) & 0xFF  # id 高8位
-        tx_buf = np.array(
-            [
-                np.uint8(can_id_l),
-                np.uint8(can_id_h),
-                0x55,
-                np.uint8(reg_id),
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-            ],
-            np.uint8,
-        )
-        if not MotorReg.is_int_type(reg_id):
-            # data 是浮点数
-            tx_buf[4:8] = float_to_uint8s(data)
-        else:
-            # data 是整数
-            tx_buf[4:8] = int_to_uint8s(int(data))
-        self.__send_data(0x7FF, tx_buf)
+    def clear_error_all(self) -> dict[MotorId, Result[None]]:
+        """清除所有已注册电机的错误。"""
+        return {
+            motor.slave_id: motor.clear_error()
+            for motor in self._motors_by_slave_id.values()
+        }

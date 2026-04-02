@@ -65,3 +65,8 @@ def uint8s_to_float(byte1: int, byte2: int, byte3: int, byte4: int) -> float:
     packed = pack('<4B', byte1, byte2, byte3, byte4)
     # 解包为浮点值
     return unpack('<f', packed)[0]
+
+
+def is_in_ranges(value: int) -> bool:
+    """兼容旧测试的范围判断函数."""
+    return (7 <= value <= 10) or (13 <= value <= 16) or (35 <= value <= 36)

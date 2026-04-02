@@ -37,3 +37,9 @@ markers = [
     "slow: marks tests as slow",
     "integration: marks tests as integration tests",
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+exclude = [".venv", "tmp"]
+reportMissingModuleSource = false
