@@ -8,14 +8,8 @@ U = TypeVar("U")
 
 @dataclass(slots=True, frozen=True)
 class Result(Generic[T]):
-    """表示一次高层电机操作的结果。
-
-    Attributes:
-        value: 操作成功时返回的值。
-        error: 操作失败时的人类可读错误信息。
-        code: 稳定的机器可读错误码。
-    """
-
+    """结果封装类, 模仿 Rust 的 Result 类"""
+    
     value: T | None = None
     error: str | None = None
     code: str | None = None
@@ -59,3 +53,16 @@ class Result(Generic[T]):
     def __bool__(self) -> bool:
         """返回结果是否成功。"""
         return self.is_ok
+    
+
+
+if __name__ == "__main__":
+
+    ret = Result.err("error", "A113")
+    print(ret)
+
+    ret = Result.err("error")
+    print(ret)
+
+    ret = Result.ok(1231)
+    print(ret)

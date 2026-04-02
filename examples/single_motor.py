@@ -21,7 +21,6 @@ print("TIMEOUT:", motor.read_param(MotorReg.TIMEOUT).value)
 motor.write_param(MotorReg.TIMEOUT, 1000)
 print("TIMEOUT:", motor.read_param(MotorReg.TIMEOUT).value)
 
-
 # 使能电机
 motor.clear_error()  # 如果启用了超时, 电机可能会因为超时而停止, 所以我们先清除错误
 motor.enable()
@@ -30,7 +29,6 @@ motor.enable()
 for _ in range(1000):
     vel = math.sin(time.time())
     motor.set_velocity(vel)
-    motor.set_mit(vel)
 
     # print(f"{motor.rotor_temp=}, {motor.mos_temp=}, {motor.fault=}")
     print(f"\r{motor.slave_id=}, {motor.control_mode=}, {motor.fault=}, {motor.pos=:.2f}, {motor.vel=:.2f}, {motor.torque=:.2f}{''*8}", end="")

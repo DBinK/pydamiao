@@ -1,7 +1,7 @@
 import pytest
 
 from pydamiao.protocol import DamiaoProtocol
-from pydamiao.types import CanResp, MotorFault, MotorReg, MotorType, MOTOR_LIMITS
+from pydamiao.structs import CanResp, MotorFault, MotorReg, MotorType, MOTOR_LIMITS
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s
 
 

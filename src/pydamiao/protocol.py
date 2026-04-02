@@ -4,7 +4,7 @@ from struct import pack
 
 import numpy as np
 
-from pydamiao.types import CanResp, Hex, MotorFault, MotorLimits, MotorReg
+from pydamiao.structs import CanResp, Hex, MotorFault, MotorLimits, MotorReg
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s, uint8s_to_float, uint8s_to_uint32, uint_to_float
 
 

@@ -5,7 +5,7 @@ import pytest
 
 from pydamiao import ControlMode, Motor, MotorManager, MotorReg, MotorType, Result, SerialBus
 from pydamiao.protocol import DamiaoProtocol
-from pydamiao.types import CanResp, MotorFault, MOTOR_LIMITS
+from pydamiao.structs import CanResp, MotorFault, MOTOR_LIMITS
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s
 
 

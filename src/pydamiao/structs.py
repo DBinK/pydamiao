@@ -1,4 +1,3 @@
-# src/pydamiao/types.py
 
 from enum import IntEnum
 from typing import NamedTuple, TypeAlias

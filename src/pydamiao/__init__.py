@@ -3,7 +3,7 @@ from pydamiao.bus import SerialBus
 from pydamiao.motor import Motor, MotorManager
 from pydamiao.protocol import DamiaoProtocol
 from pydamiao.result import Result
-from pydamiao.types import ControlMode, MotorReg, MotorState, MotorType
+from pydamiao.structs import ControlMode, MotorReg, MotorState, MotorType
 
 __all__ = [
     "DamiaoProtocol",

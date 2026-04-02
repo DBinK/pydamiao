@@ -5,7 +5,7 @@ import time
 from pydamiao.bus import SerialBus
 from pydamiao.protocol import DamiaoProtocol, ParsedMessage
 from pydamiao.result import Result
-from pydamiao.types import ControlMode, MotorFault, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
+from pydamiao.structs import ControlMode, MotorFault, MotorReg, MotorState, MotorType, MotorLimits, MOTOR_LIMITS
 
 
 class Motor:
@@ -475,6 +475,50 @@ class MotorManager:
         if motor is None:
             raise KeyError(motor_id)
         return motor
+    
+
+    # ===========================================================================
+    # 多电机状态/参数
+    # ===========================================================================   
+     
+    def get_all_params(self) -> dict[int, dict[int, float | int]]:
+        """获取所有已注册电机的已缓存的寄存器参数。
+        
+        Returns:
+            每个电机的参数字典
+        """
+        return {
+            motor.slave_id: motor.param_cache
+            for motor in self._motors_by_slave_id.values()
+        }
+    
+    def get_all_status(self) -> dict[int, MotorState]:
+        """返回所有已注册电机的当前状态。
+        
+        Returns:
+            每个电机的状态字典
+        """
+        return {
+            motor.slave_id: motor.get_state() 
+            for motor in self._motors_by_slave_id.values()
+        }
+
+    def refresh_all_status(self) -> dict[int, MotorState]:
+        """刷新所有已注册电机的状态。
+        
+        Returns:
+            每个电机的状态字典
+        """
+        for motor in self._motors_by_slave_id.values():
+            motor.refresh_state()
+        
+        return self.get_all_status()
+
+
+
+    # ===========================================================================
+    # 基础控制
+    # ===========================================================================
 
     def enable_all(self) -> dict[int, Result[None]]:
         """使能所有已注册电机。"""
@@ -491,3 +535,4 @@ class MotorManager:
     def clean_all_errors(self) -> dict[int, Result[None]]:
         """清除所有已注册电机的错误。"""
         return {motor.slave_id: motor.clear_error() for motor in self._motors_by_slave_id.values()}
+
