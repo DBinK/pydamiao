@@ -38,12 +38,15 @@ manager = MotorManager(bus)
 motor1 = manager.add_motor(MotorType.DM4310, 0x06, 0x12)
 motor2 = manager.add_motor(MotorType.DM4310, 0x05, 0x12)
 
-motor1.set_mode(ControlMode.POS_VEL)
-motor2.set_mode(ControlMode.VEL)
+if not motor1.set_mode(ControlMode.POS_VEL).is_ok:
+    raise RuntimeError("failed to switch motor1 to POS_VEL")
+if not motor2.set_mode(ControlMode.VEL).is_ok:
+    raise RuntimeError("failed to switch motor2 to VEL")
 
-motor1.save_params()
-motor2.save_params()
-manager.enable_all()
+motor1.save_params().unwrap()
+motor2.save_params().unwrap()
+for result in manager.enable_all().values():
+    result.unwrap()
 
 for _ in range(1000):
     q = math.sin(time.time())

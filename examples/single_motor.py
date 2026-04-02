@@ -30,9 +30,10 @@ motor.enable()
 for _ in range(1000):
     vel = math.sin(time.time())
     motor.set_velocity(vel)
+    motor.set_mit(vel)
 
-    print(f"{motor.rotor_temp=}, {motor.mos_temp=}, {motor.fault=}")
-    # print(f"\r{motor.slave_id=}, {motor.control_mode=}, {motor.pos:.2f}, {motor.vel:.2f}, {motor.torque:.2f}{''*5}", end="")
+    # print(f"{motor.rotor_temp=}, {motor.mos_temp=}, {motor.fault=}")
+    print(f"\r{motor.slave_id=}, {motor.control_mode=}, {motor.fault=}, {motor.pos=:.2f}, {motor.vel=:.2f}, {motor.torque=:.2f}{''*8}", end="")
 
     time.sleep(0.01)
 
