@@ -4,11 +4,11 @@ import time
 from pydamiao import ControlMode, Motor, MotorReg, MotorType, SerialBus
 
 # 创建串口总线和电机对象
-bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
+bus = SerialBus("COM9", baudrate=921600, timeout=0.1)
 motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16, name="wrist_3")
 
 # 读取和修改电机参数示例
-if motor.set_mode(ControlMode.POS_VEL):
+if motor.set_mode(ControlMode.VEL):
     print(f"switch POS_VEL success, current mode: {motor.control_mode}")
 
 print("PMAX:", motor.read_param(MotorReg.PMAX).value)
@@ -18,8 +18,8 @@ print("TMAX:", motor.read_param(MotorReg.TMAX).value)
 print("TIMEOUT:", motor.read_param(MotorReg.TIMEOUT).value)
 
 # 推荐设置一下超时, 这样在我们停止发送控制命令时, 电机不会不受控地继续运动
-motor.write_param(MotorReg.TIMEOUT, 1000)
-motor.save_params()
+motor.write_param(MotorReg.TIMEOUT, 0)
+# motor.save_params()
 print("TIMEOUT:", motor.read_param(MotorReg.TIMEOUT).value)
 
 # 使能电机

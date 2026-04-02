@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass
 
 from pydamiao import Motor, MotorState, Result, SerialBus
-from pydamiao.structs import MotorId, MotorType
+from pydamiao.structs import ControlMode, MotorId, MotorType
 from pydamiao.utils import limit_min_max
 
 
@@ -19,7 +19,7 @@ class JointCfg():
     # MIT 控制参数
     pos: float    = 0.0  # 默认位置
     vel: float    = 0.0
-    kp: float     = 15.0
+    kp: float     = 35.0
     kd: float     = 1.0
     torque: float = 0.0
 
@@ -59,7 +59,7 @@ class Joint:
     def set_pos(self, pos: float):
         """设置关节位置"""
         limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
-        self.motor.set_mit(pos, self.cfg.vel, self.cfg.kp, self.cfg.kd, self.cfg.torque)
+        return self.motor.set_mit(pos, self.cfg.vel, self.cfg.kp, self.cfg.kd, self.cfg.torque)
 
 
 class JointManager:
@@ -107,6 +107,12 @@ class JointManager:
         return {joint.slave_id: joint.motor.torque for joint in self.joints_by_name.values()}
 
     ### 关节控制 ###
+    def set_mode(self, mode: ControlMode):
+        for joint in self.joints_by_name.values():
+            ret = joint.motor.set_mode(mode)
+            print(ret)
+
+
     def clean_error(self):
         for joint in self.joints_by_name.values():
             joint.motor.clean_error()
@@ -123,14 +129,17 @@ class JointManager:
         for joint in self.joints_by_name.values():
             joint.set_zero()
 
-    def set_pos(self, pos_dict: dict[MotorId, float]):
+    def set_pos(self, pos_dict: dict[MotorId, float]) -> list[Result[None]]:
+        ret = []
         for slave_id, pos in pos_dict.items():
             joint = self.joints_by_slave_id[slave_id]
-            joint.set_pos(pos)
+            ret_pos = joint.set_pos(pos)
+            ret.append(ret_pos)
+        return ret
 
     def set_pos_list(self, pos_list: list[float]):
         pos_dict = self.pos_list_to_dict(pos_list)
-        self.set_pos(pos_dict)
+        return self.set_pos(pos_dict)
 
     ### 辅助函数 ###
     def pos_list_to_dict(self, pos_list: list[float]) -> dict[MotorId, float]:

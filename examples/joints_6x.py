@@ -2,7 +2,7 @@ import time
 
 from looptick import LoopTick
 from pydamiao import SerialBus
-from pydamiao.structs import MotorType
+from pydamiao.structs import ControlMode, MotorType
 from rich import print as rprint
 
 from pydamiao.joint import Joint, JointCfg, JointManager
@@ -39,13 +39,20 @@ loop = LoopTick()
 timeout = 115
 now = time.time()
 
+manager.clean_error()
+manager.disable()
+manager.set_mode(ControlMode.MIT)
 
 manager.set_zero()
-# manager.enable()
+manager.enable()
 
-wrist_3.motor.enable()
-wrist_2.motor.enable()
-wrist_1.motor.enable()
+# wrist_3.motor.enable()
+# wrist_2.motor.enable()
+# wrist_1.motor.enable()
+
+# wrist_3.motor.set_mode(ControlMode.MIT)
+# wrist_2.motor.set_mode(ControlMode.MIT)
+# wrist_1.motor.set_mode(ControlMode.MIT)
 
 # with LoopTick() as timer:
 #     for i in range(100):
@@ -64,36 +71,34 @@ while (time.time() - now) < timeout:
     time.sleep(0.0001)
 
     # pos_list = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    # manager.set_pos_list(pos_list)
+    # ret = manager.set_pos_list(pos_list)
+    # rprint(ret)
+
     # manager.update()
 
-    # wrist_3.set_pos(0.0)
-    ret3 = wrist_3.motor.refresh_state(1)
-    time.sleep(0.001)
+    # ret = [
+    #     wrist_3.motor.refresh_state(1),
+    #     wrist_2.motor.refresh_state(1),
+    #     wrist_1.motor.refresh_state(1),
+    # ]
+    # rprint(ret)
 
-    # # wrist_2.set_pos(0.0)
-    ret2 = wrist_2.motor.refresh_state(1)
-    time.sleep(1.001)
+    ret = [
+        wrist_3.set_pos(0.0),
+        wrist_2.set_pos(0.0),
+        wrist_1.set_pos(0.0),
+        elbow.set_pos(0.0),
+        shoulder.set_pos(0.0),
+        base.set_pos(0.0),
+    ]
+    rprint(ret)
 
-    # wrist_1.set_pos(0.0)
-    ret1 = wrist_1.motor.refresh_state(1)
-    time.sleep(0.001)
-
-    # elbow.set_pos(0.0)
-    # time.sleep(0.001)
-
-    # shoulder.set_pos(0.0)
-    # time.sleep(0.001)
-
-    # base.set_pos(0.0)
-    # time.sleep(0.001)
 
     pos_list = manager.get_joints_pos()
 
     ms = loop.tick_ms()
     # print(f"\r{ms:.2f} {pos_list}", end="")
-    print(f"{ms:.2f} {pos_list}")
+    print(f"{ms=:.2f} {pos_list=}")
 
-    rprint(ret3, ret2, ret1)
-    # rprint(ret3, ret2)
+
 

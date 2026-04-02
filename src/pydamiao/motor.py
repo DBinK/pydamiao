@@ -210,7 +210,8 @@ class Motor:
         kp: float,
         kd: float,
         torque: float,
-        auto_mode: bool = True,
+        # auto_mode: bool = True,
+        auto_mode: bool = False,
     ) -> Result[None]:
         """发送 MIT 控制命令。
 
@@ -314,7 +315,7 @@ class Motor:
             return Result.err(result.error or "Failed to refresh state", code=result.code or "error")
         return Result.ok(self.get_state())
 
-    def read_param(self, reg_id: MotorReg, timeout: float = 0.1) -> Result[float | int]:
+    def read_param(self, reg_id: MotorReg, timeout: float = 0.2) -> Result[float | int]:
         """读取电机寄存器。
 
         Args:

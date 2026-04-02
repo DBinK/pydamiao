@@ -37,7 +37,7 @@ class SerialBus:
         self,
         port: str | SerialPortLike,
         baudrate: int = 921600,
-        timeout: float = 0.01,
+        timeout: float = 0.1,
         read_size: int = 64,
         auto_start: bool = True,
     ) -> None:
@@ -147,7 +147,7 @@ class SerialBus:
         self,
         data: bytes,
         matcher: Callable[[ParsedMessage], bool],
-        timeout: float = 0.5,
+        timeout: float = 1.0,
     ) -> Result[ParsedMessage]:
         """发送请求并等待第一条匹配的响应。
 

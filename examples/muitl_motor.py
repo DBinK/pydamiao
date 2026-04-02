@@ -42,7 +42,17 @@ while (time.time() - now) < timeout:
     motor2.set_pos_vel(sin * 0.1, 3)
     motor3.set_mit(sin * 0.2, 0, 5.5, 1.0, 0.0)
 
-    print(f"\r{motor1.name=}, {motor1.control_mode=}, {motor1.fault=}, {motor1.pos=:.2f}, {motor1.vel=:.2f}, {motor1.torque=:.2f}{' '*8}", end="")
+    print(
+        f"\r{motor1.name=}, {motor1.control_mode=}, {motor1.fault=}, {motor1.pos=:.2f}, {motor1.vel=:.2f}, {motor1.torque=:.2f}{' ' * 8}",
+        end="",
+    )
+
+    # ret1 = motor1.refresh_state()
+    # ret2 = motor2.refresh_state()
+    # ret3 = motor3.refresh_state()
+
+    # from rich import print
+    # print(f"{ret1=}, {ret2=}, {ret3=}")
 
     time.sleep(0.001)
 
