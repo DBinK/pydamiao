@@ -174,6 +174,7 @@ class Motor:
     def set_zero(self) -> Result[None]:
         """把当前位置设置为电机零点。"""
         self.bus.send(DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.SET_ZERO_CMD))
+        time.sleep(0.02)    # 等待电机完成设置, 不然下次启动, 电机会失联
         return Result.ok()
 
     def clean_error(self) -> Result[None]:
@@ -242,7 +243,7 @@ class Motor:
         )
         return Result.ok()
 
-    def set_pos_vel(self, pos: float, vel: float, auto_mode: bool = True) -> Result[None]:
+    def set_pos_vel(self, pos: float, vel: float, auto_mode: bool = False) -> Result[None]:
         """发送位置速度控制命令。
 
         Args:
@@ -259,7 +260,7 @@ class Motor:
         self.bus.send(DamiaoProtocol.encode_pos_vel_control(self.slave_id, pos, vel))
         return Result.ok()
 
-    def set_velocity(self, vel: float, auto_mode: bool = True) -> Result[None]:
+    def set_velocity(self, vel: float, auto_mode: bool = False) -> Result[None]:
         """发送速度控制命令。
 
         Args:
@@ -280,7 +281,7 @@ class Motor:
         pos: float,
         vel: float,
         current: float,
-        auto_mode: bool = True,
+        auto_mode: bool = False,
     ) -> Result[None]:
         """发送力位混合控制命令。
 
