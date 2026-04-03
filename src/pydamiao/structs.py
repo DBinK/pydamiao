@@ -113,7 +113,7 @@ class ControlMode(IntEnum):
     MIT = 1         # MIT控制
     POS_VEL = 2     # 位置-速度控制
     VEL = 3         # 速度控制
-    TORQUE_POS = 4  # 扭矩-位置控制
+    POS_FORCE = 4   # 位置-扭矩控制
 
 
 class MotorState(NamedTuple):

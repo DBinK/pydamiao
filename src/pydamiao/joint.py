@@ -16,12 +16,17 @@ class JointCfg():
     master_id: MotorId
     name: str
 
-    # MIT 控制参数
     pos: float    = 0.0  # 默认位置
-    vel: float    = 0.0
-    kp: float     = 35.0
+    vel: float    = 0.0  # 默认速度
+
+    # MIT 控制参数
+    kp: float     = 15.0
     kd: float     = 1.0
     torque: float = 0.0
+
+    # PVT 控制参数
+    vel_pvt = 8000
+    current = 2000   # 电流标幺值放大10000倍, 范围 0-10000
 
     # 机器人关节参数
     pos_min: float = -math.pi    # 默认最小位置
@@ -56,10 +61,20 @@ class Joint:
         """获取当前关节力矩"""
         return self.motor.torque
     
-    def set_pos(self, pos: float):
+    def set_mit_pos(self, pos: float):
         """设置关节位置"""
         limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
         return self.motor.set_mit(pos, self.cfg.vel, self.cfg.kp, self.cfg.kd, self.cfg.torque)
+
+    def set_pos_force(self, pos: float, vel: int, current: int):
+        """设置关节位置"""
+        limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
+        return self.motor.set_pos_force(pos, vel, current)
+
+    def set_pos_vel(self, pos: float, vel: float):
+        """设置关节位置"""
+        limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
+        return self.motor.set_pos_vel(pos, vel)
 
 
 class JointManager:
@@ -112,7 +127,6 @@ class JointManager:
             ret = joint.motor.set_mode(mode)
             print(ret)
 
-
     def clean_error(self):
         for joint in self.joints_by_name.values():
             joint.motor.clean_error()
@@ -129,17 +143,26 @@ class JointManager:
         for joint in self.joints_by_name.values():
             joint.set_zero()
 
-    def set_pos(self, pos_dict: dict[MotorId, float]) -> list[Result[None]]:
+    def set_pos(self, pos_dict: dict[MotorId, float], mode: ControlMode = ControlMode.MIT) -> list[Result[None]]:
         ret = []
         for slave_id, pos in pos_dict.items():
             joint = self.joints_by_slave_id[slave_id]
-            ret_pos = joint.set_pos(pos)
+            
+            if mode == ControlMode.MIT:
+                ret_pos = joint.set_mit_pos(pos)
+            elif mode == ControlMode.POS_FORCE:
+                ret_pos = joint.set_pos_force(pos, joint.cfg.vel_pvt, joint.cfg.current)
+            elif mode == ControlMode.POS_VEL:
+                ret_pos = joint.set_pos_vel(pos, 0)
+            else:
+                raise ValueError(f"Unsupported control mode: {mode}")
+
             ret.append(ret_pos)
         return ret
 
-    def set_pos_list(self, pos_list: list[float]):
+    def set_pos_list(self, pos_list: list[float], mode: ControlMode = ControlMode.MIT):
         pos_dict = self.pos_list_to_dict(pos_list)
-        return self.set_pos(pos_dict)
+        return self.set_pos(pos_dict, mode)
 
     ### 辅助函数 ###
     def pos_list_to_dict(self, pos_list: list[float]) -> dict[MotorId, float]:

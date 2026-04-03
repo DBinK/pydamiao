@@ -153,7 +153,7 @@ class Motor:
         deadline = time.monotonic() + timeout_sec
         command = DamiaoProtocol.encode_basic_command(self.slave_id, DamiaoProtocol.DISABLE_CMD)
 
-        for _ in range(3):  # (安全性) 先发送几次次失能命令
+        for _ in range(1):  # (安全性) 先发送几次次失能命令
             self._request_feedback(command, timeout=0.05)
 
         while True:  # (安全性)  (达妙没有失能/失能的状态反馈)
@@ -169,6 +169,7 @@ class Motor:
             if result.is_ok and (abs(self.vel) <= 0.02 and abs(self.torque) <= 0.02):
                 with self._state_lock:
                     self.enabled = False  # 修改状态
+                print(f"Motor {self.name} disabled")  # TODO: 添加日志
                 return Result.ok()
 
     def set_zero(self) -> Result[None]:
@@ -211,7 +212,6 @@ class Motor:
         kp: float,
         kd: float,
         torque: float,
-        # auto_mode: bool = True,
         auto_mode: bool = False,
     ) -> Result[None]:
         """发送 MIT 控制命令。
@@ -279,22 +279,22 @@ class Motor:
     def set_pos_force(
         self,
         pos: float,
-        vel: float,
-        current: float,
+        vel: int,
+        current: int,
         auto_mode: bool = False,
     ) -> Result[None]:
         """发送力位混合控制命令。
 
         Args:
-            pos: 目标位置，单位 rad。
-            vel: 电机协议要求的辅助速度项。
-            current: 电机协议要求的电流或力矩项。
-            auto_mode: 是否自动切换到 TORQUE_POS 模式。
+            pos: rad 期望位置
+            vel: rad/s 期望速度 为放大100倍 范围0-10000  
+            current: 期望电流标幺值放大10000倍,  范围 0-10000; 电流标幺值：实际电流值除以最大电流值，最大电流见上电打印
+            auto_mode: 是否自动切换到 POS_FORCE 模式。
         """
         fault_result = self._ensure_no_fault()
         if not fault_result:
             return fault_result
-        mode_result = self._prepare_control_mode(ControlMode.TORQUE_POS, auto_mode)
+        mode_result = self._prepare_control_mode(ControlMode.POS_FORCE, auto_mode)
         if not mode_result:
             return mode_result
         self.bus.send(DamiaoProtocol.encode_pos_force_control(self.slave_id, pos, vel, current))
