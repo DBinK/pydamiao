@@ -1,3 +1,4 @@
+import math
 import time
 
 from looptick import LoopTick
@@ -28,77 +29,61 @@ base = Joint(base_cfg, bus)
 
 # 注册到关节管理器
 manager = JointManager(bus)
-joints = [wrist_3, wrist_2, wrist_1, elbow, shoulder, base]
+
+joints = [
+    wrist_3,   # 手腕3
+    wrist_2,   # 手腕2
+    wrist_1,   # 手腕1
+    elbow,     # 肘部
+    shoulder,  # 肩部
+    base       # 底座
+] 
+
 for joint in joints:
     manager.add_joint(joint)
 
 
-# 控制示例
-loop = LoopTick()
-
-timeout = 115
-now = time.time()
-
+# 清除错误
 manager.clean_error()
 manager.disable()
-manager.set_mode(ControlMode.MIT)
 
-manager.set_zero()
+# 启动配置
+manager.set_mode(ControlMode.MIT)
+# manager.set_zero()
+
 manager.enable()
 
-# wrist_3.motor.enable()
-# wrist_2.motor.enable()
-# wrist_1.motor.enable()
 
-# wrist_3.motor.set_mode(ControlMode.MIT)
-# wrist_2.motor.set_mode(ControlMode.MIT)
-# wrist_1.motor.set_mode(ControlMode.MIT)
+breakpoint()
 
-# with LoopTick() as timer:
-#     for i in range(100):
-#         # manager.disable()
-#         # wrist_3.motor.disable()
-#         wrist_3.set_pos(0.0)
-#         diff = timer.tick()
-#         print(f"第 {i} 次循环耗时: {diff * timer.NS2MS:.6f} ms")
-#         time.sleep(0.001)
+# 控制示例
+loop = LoopTick()  # 创建循环计时器
 
-# breakpoint()
+timeout = 15  # 设置运行时间
 
-
-while (time.time() - now) < timeout:
+start = time.time()
+while (time.time() - start) < timeout:
 
     time.sleep(0.0001)
+    
+    sin = math.sin(time.time())
 
+    # 装填位置列表
+    pos_list = [0.0, 0.0, 0.0, 0.0, 0.0, 0.1*sin]
     # pos_list = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    # ret = manager.set_pos_list(pos_list)
+
+    ret = manager.set_pos_list(pos_list)
     # rprint(ret)
 
-    # manager.update()
-
-    # ret = [
-    #     wrist_3.motor.refresh_state(1),
-    #     wrist_2.motor.refresh_state(1),
-    #     wrist_1.motor.refresh_state(1),
-    # ]
-    # rprint(ret)
-
-    ret = [
-        wrist_3.set_pos(0.0),
-        wrist_2.set_pos(0.0),
-        wrist_1.set_pos(0.0),
-        elbow.set_pos(0.0),
-        shoulder.set_pos(0.0),
-        base.set_pos(0.0),
-    ]
-    rprint(ret)
-
-
-    pos_list = manager.get_joints_pos()
+    # 获取状态反馈
+    # manager.update()  # 如果没有控制命令，则需要调用此方法更新状态
+    pos_dict = manager.get_joints_pos()
 
     ms = loop.tick_ms()
-    # print(f"\r{ms:.2f} {pos_list}", end="")
-    print(f"{ms=:.2f} {pos_list=}")
+    # print(f"{ms=:.2f} {pos_list=}")
+    print(f"\r{ms:.2f} {pos_list}", end="")  # 不换行打印
+
+
 
 
 
