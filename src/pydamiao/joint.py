@@ -10,70 +10,104 @@ from pydamiao.utils import limit_min_max
 # 控制电机运动示例
 @dataclass
 class JointCfg():
-    # 电机属性
+    # 关节属性
     motor_type: MotorType
     slave_id: MotorId
     master_id: MotorId
     name: str
+    offset: float = 0.0
 
+    # 默认参数
     pos: float    = 0.0  # 默认位置
     vel: float    = 0.0  # 默认速度
 
-    # MIT 控制参数
-    kp: float     = 15.0
-    kd: float     = 1.0
-    torque: float = 0.0
+    # MIT 模式参数
+    mit_kp: float     = 15.0
+    mit_kd: float     = 1.0
+    mit_torque: float = 0.0
 
-    # PVT 控制参数
-    vel_pvt = 8000
-    current = 2000   # 电流标幺值放大10000倍, 范围 0-10000
+    # PVT 模式参数
+    pvt_vel = 8000
+    pvt_current = 2000   # 电流标幺值放大10000倍, 范围 0-10000
+
+    # POS_VEL 模式参数
+    pv_vel: float = 5000.0
 
     # 机器人关节参数
     pos_min: float = -math.pi    # 默认最小位置
     pos_max: float = math.pi     # 默认最大位置  
-    reverse: bool  = False
+    direction: float  = 1        # 方向系数, 取值 -1 或 1 , 默认正转为 1
 
 
 class Joint:
     def __init__(self, cfg: JointCfg, bus: SerialBus):
+        """"""
         self.cfg = cfg
+
         self.name = cfg.name
         self.slave_id = cfg.slave_id
+
+        self.offset = cfg.offset
+        self.direction = cfg.direction
+
         self.motor = Motor(bus, cfg.motor_type, cfg.slave_id, cfg.master_id, cfg.name)
     
+    # 预处理数据
+    def apply_clip(self, pos: float) -> float:
+        """应用限幅"""
+        return limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
+
+    def apply_offset(self, pos: float) -> float:
+        """应用偏移"""
+        return pos + self.offset
+
+    def apply_direction(self, pos: float) -> float:
+        """应用方向"""
+        return pos * self.direction
+
     def update(self) -> Result[MotorState]:
         """更新关节状态"""
         return self.motor.refresh_state()
 
-    def set_zero(self):
-        """将当前关节位置设置为零点"""
+    def set_zero_hard(self):
+        """设置硬零点, 写入电机 flash (推荐设置软零点, 保护 flash 寿命) """
         self.motor.set_zero()
+
+    def set_zero(self):
+        """设置软零点, 适用于 """
+        self.offset = -(self.motor.pos * self.direction)  # 设置当前位置为偏移值
 
     def get_pos(self) -> float:
         """获取当前关节位置"""
-        return self.motor.pos
+        return (self.motor.pos - self.offset) * self.direction
     
     def get_vel(self) -> float:
         """获取当前关节速度"""
-        return self.motor.vel
+        return self.motor.vel * self.direction
     
     def get_torque(self) -> float:
         """获取当前关节力矩"""
-        return self.motor.torque
+        return self.motor.torque * self.direction
     
-    def set_mit_pos(self, pos: float):
+    def set_mit_pos(self, pos: float) -> Result[None]:
         """设置关节位置"""
-        limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
-        return self.motor.set_mit(pos, self.cfg.vel, self.cfg.kp, self.cfg.kd, self.cfg.torque)
+        pos = self.apply_direction(pos)  # 添加方向
+        pos = self.apply_offset(pos)     # 添加偏移
+        pos = self.apply_clip(pos)       # 限幅
+        return self.motor.set_mit(pos, self.cfg.vel, self.cfg.mit_kp, self.cfg.mit_kd, self.cfg.mit_torque)
 
-    def set_pos_force(self, pos: float, vel: int, current: int):
+    def set_pos_force(self, pos: float, vel: int, current: int) -> Result[None]:
         """设置关节位置"""
-        limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
+        pos = self.apply_direction(pos)  # 添加方向
+        pos = self.apply_offset(pos)     # 添加偏移
+        pos = self.apply_clip(pos)       # 限幅
         return self.motor.set_pos_force(pos, vel, current)
 
-    def set_pos_vel(self, pos: float, vel: float):
+    def set_pos_vel(self, pos: float, vel: float) -> Result[None]:
         """设置关节位置"""
-        limit_min_max(pos, self.cfg.pos_min, self.cfg.pos_max)
+        pos = self.apply_direction(pos)  # 添加方向
+        pos = self.apply_offset(pos)     # 添加偏移
+        pos = self.apply_clip(pos)       # 限幅
         return self.motor.set_pos_vel(pos, vel)
 
 
@@ -113,13 +147,13 @@ class JointManager:
             joint.update()
 
     def get_joints_pos(self) -> dict[MotorId, float]:
-        return {joint.slave_id: joint.motor.pos for joint in self.joints_by_name.values()}
+        return {joint.slave_id: joint.get_pos() for joint in self.joints_by_name.values()}
     
     def get_joints_vel(self) -> dict[MotorId, float]:
-        return {joint.slave_id: joint.motor.vel for joint in self.joints_by_name.values()}
+        return {joint.slave_id: joint.get_vel() for joint in self.joints_by_name.values()}
     
     def get_joints_torque(self) -> dict[MotorId, float]:
-        return {joint.slave_id: joint.motor.torque for joint in self.joints_by_name.values()}
+        return {joint.slave_id: joint.get_torque() for joint in self.joints_by_name.values()}
 
     ### 关节控制 ###
     def set_mode(self, mode: ControlMode):
@@ -139,6 +173,10 @@ class JointManager:
         for joint in self.joints_by_name.values():
             joint.motor.disable()
 
+    def set_zero_hard(self):
+        for joint in self.joints_by_name.values():
+            joint.set_zero_hard()
+
     def set_zero(self):
         for joint in self.joints_by_name.values():
             joint.set_zero()
@@ -151,9 +189,9 @@ class JointManager:
             if mode == ControlMode.MIT:
                 ret_pos = joint.set_mit_pos(pos)
             elif mode == ControlMode.POS_FORCE:
-                ret_pos = joint.set_pos_force(pos, joint.cfg.vel_pvt, joint.cfg.current)
+                ret_pos = joint.set_pos_force(pos, joint.cfg.pvt_vel, joint.cfg.pvt_current)
             elif mode == ControlMode.POS_VEL:
-                ret_pos = joint.set_pos_vel(pos, 0)
+                ret_pos = joint.set_pos_vel(pos, joint.cfg.pv_vel)
             else:
                 raise ValueError(f"Unsupported control mode: {mode}")
 

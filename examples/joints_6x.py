@@ -21,11 +21,11 @@ class JointID(IntEnum):
 bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
 
 # 创建关节参数
-wrist_3_cfg  = JointCfg(MotorType.DM4310, 0x06, 0x16, "wrist_3", kp=15, torque=10, pos_min=-30, pos_max=30)
+wrist_3_cfg  = JointCfg(MotorType.DM4310, 0x06, 0x16, "wrist_3", mit_kp=15, mit_torque=10, pos_min=-30, pos_max=30)
 wrist_2_cfg  = JointCfg(MotorType.DM4310, 0x05, 0x15, "wrist_2", pos_min=-10, pos_max=10)
 wrist_1_cfg  = JointCfg(MotorType.DM4310, 0x04, 0x14, "wrist_1", pos_min=-10, pos_max=10)
 elbow_cfg    = JointCfg(MotorType.DM4340, 0x03, 0x13, "elbow", pos_min=-10, pos_max=10)
-shoulder_cfg = JointCfg(MotorType.DM4340, 0x02, 0x12, "shoulder", kp=15, torque=-5, pos_min=-10, pos_max=10)
+shoulder_cfg = JointCfg(MotorType.DM4340, 0x02, 0x12, "shoulder", mit_kp=15, mit_torque=-5, pos_min=-10, pos_max=10)
 base_cfg     = JointCfg(MotorType.DM4340, 0x01, 0x11, "base", pos_min=-10, pos_max=10)
 
 # 创建关节
@@ -54,11 +54,12 @@ for joint in joints:
 
 # 清除错误
 manager.clean_error()
-manager.disable()
+# manager.disable()
 
 # 启动配置
 # manager.set_mode(ControlMode.MIT)
-manager.set_mode(ControlMode.POS_FORCE)
+# manager.set_mode(ControlMode.POS_FORCE)
+manager.set_mode(ControlMode.POS_VEL)
 manager.set_zero()
 
 manager.enable()
@@ -82,10 +83,14 @@ while (time.time() - start) < timeout:
     sin = math.sin(time.time())
 
     # 装填位置列表
-    # pos_list = [0.0, 0.0, 0.0, 0.0, 0.0, 0.1*sin]
     pos_list = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-    ret = manager.set_pos_list(pos_list, ControlMode.POS_FORCE)
+    if int(time.time()) % 6 < 3:
+        pos_list[5] = 1.0
+    else:
+        pos_list[5] = 0.0
+
+    ret = manager.set_pos_list(pos_list, ControlMode.POS_VEL)
     # rprint(ret)
 
     # 获取状态反馈
@@ -93,7 +98,7 @@ while (time.time() - start) < timeout:
     # # manager.update()  # 如果没有控制命令，则需要调用此方法更新状态
     pos_dict = {k: f"{v:.3f}" for k, v in manager.get_joints_pos().items()}
     torque_dict = {k: f"{v:.3f}" for k, v in manager.get_joints_torque().items()}
-    
+
     status = {"pos": pos_dict, "torque": torque_dict}
 
     # print(f"{ms=:.2f} {pos_list=}")

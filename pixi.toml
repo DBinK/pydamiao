@@ -1,0 +1,10 @@
+[workspace]
+authors = ["DBinK <DBinKv1@Gmail.com>"]
+channels = ["conda-forge"]
+name = "pydamiao"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
