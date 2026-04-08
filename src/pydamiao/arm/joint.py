@@ -2,6 +2,8 @@ import math
 import time
 from dataclasses import dataclass
 
+from rich import print as rprint
+
 from pydamiao import Motor, MotorState, Result, SerialBus
 from pydamiao.structs import ControlMode, MotorId, MotorType
 from pydamiao.utils import limit_min_max
@@ -149,6 +151,9 @@ class JointManager:
     def get_joints_pos(self) -> dict[MotorId, float]:
         return {joint.slave_id: joint.get_pos() for joint in self.joints_by_name.values()}
     
+    def get_joints_pos_list(self) -> list[float]:
+        return self.pos_dict_to_list(self.get_joints_pos())
+
     def get_joints_vel(self) -> dict[MotorId, float]:
         return {joint.slave_id: joint.get_vel() for joint in self.joints_by_name.values()}
     
@@ -211,3 +216,14 @@ class JointManager:
         sorted_ids = sorted(self.joints_by_slave_id.keys())
         return [pos_dict[slave_id] for slave_id in sorted_ids]
     
+    
+    ### 其它 ###
+    def set_teach_mode(self):
+        """设置示教模式, 目前实现为 MIT 模式设置全零"""
+        self.set_mode(ControlMode.MIT)
+        for joint in self.joints_by_name.values():
+            joint.motor.set_mit(0,0,0,0,0)
+    
+    def print_joints_cfg(self):
+        for joint in self.joints_by_name.values():
+            rprint(joint.cfg)

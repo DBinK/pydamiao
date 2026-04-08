@@ -7,7 +7,7 @@ from pydamiao import SerialBus
 from pydamiao.structs import ControlMode, MotorType
 from rich import print as rprint
 
-from pydamiao.joint import Joint, JointCfg, JointManager
+from pydamiao.arm.joint import Joint, JointCfg, JointManager
 
 class JointID(IntEnum):
     base     = 0x01
@@ -58,8 +58,8 @@ manager.clean_error()
 
 # 启动配置
 # manager.set_mode(ControlMode.MIT)
-# manager.set_mode(ControlMode.POS_FORCE)
-manager.set_mode(ControlMode.POS_VEL)
+manager.set_mode(ControlMode.POS_FORCE)
+# manager.set_mode(ControlMode.POS_VEL)
 manager.set_zero()
 
 manager.enable()
@@ -67,7 +67,7 @@ manager.enable()
 # joint = manager.get_joint_by_id(JointID.shoulder)
 # joint.motor.enable()
 
-# breakpoint()
+breakpoint()
 
 # 控制示例
 loop = LoopTick()  # 创建循环计时器
