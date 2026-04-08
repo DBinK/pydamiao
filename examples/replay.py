@@ -27,7 +27,8 @@ manager.clean_error()
 # breakpoint()
 
 manager.enable()
-manager.set_mode(ControlMode.POS_FORCE)
+# manager.set_mode(ControlMode.POS_FORCE)
+manager.set_mode(ControlMode.POS_VEL)
 
 # 控制示例
 
@@ -37,10 +38,19 @@ if __name__ == "__main__":
     npy_path = Path("tmp/test.npy")
 
     reader = JointsReader(npy_path)
-    loop = RateLoop(20, duration=50)  # 时间给很大
+    loop = RateLoop(200, duration=999)  # 时间给很大
 
-    for (pos, ts), _ in zip(reader, loop):
-        print("send:", pos)
-        manager.set_pos_list(pos, ControlMode.POS_FORCE)
+    # mode = ControlMode.POS_FORCE
+    mode = ControlMode.POS_VEL
 
-    print("done")
+    while True:
+
+        for (pos, ts), _ in zip(reader, loop):
+            print("send:", pos)
+            manager.set_pos_list(pos, mode)
+
+        for (pos, ts), _ in zip(reversed(reader), loop):
+            print("send:", pos)
+            manager.set_pos_list(pos, mode)
+
+        print("done")

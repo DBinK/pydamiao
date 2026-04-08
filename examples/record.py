@@ -27,6 +27,7 @@ manager.enable()
 
 manager.set_teach_mode()
 
+input("已进入示教模式, 按下回车开始录制")
 # 控制示例
 
 if __name__ == "__main__":
@@ -40,15 +41,17 @@ if __name__ == "__main__":
     loop = LoopTick()
 
     try:
-        for elapsed in RateLoop(100, duration=15):
+        for elapsed in RateLoop(200, duration=6):
+            
+            for joint in manager.joints_by_name.values():
+                joint.motor.set_mit(0,0,0,0,0)
 
-            # manager.update()
             pos_dict = manager.get_joints_pos()
             pos_list = manager.pos_dict_to_list(pos_dict)
 
             rprint(loop.tick_ms())
             
-            # rrlog_joints(manager.pos_list_to_dict(pos_list))
+            rrlog_joints(manager.pos_list_to_dict(pos_list))
             recorder.record(pos_list)
     
     finally:

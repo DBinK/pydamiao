@@ -43,6 +43,12 @@ class JointsReader:
         for row in self.data:
             yield row[:-1], row[-1]
 
+    def __reversed__(self):
+        """倒序迭代（支持 reversed()）"""
+        # 使用切片确保对 numpy 数组的兼容性
+        for row in self.data[::-1]:
+            yield row[:-1], row[-1]
+            
 
 if __name__ == "__main__":
 
