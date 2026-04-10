@@ -1,150 +1,194 @@
 import time
+from typing import NamedTuple
+
 
 def wait_until(target_time: float):
-    """高精度等待直到目标时间"""
+    """
+    等待直到 target_time 秒（基于 perf_counter）
+
+    三段策略：
+    - 远：sleep(0) 让出CPU
+    - 近：busy-wait 保证精度
+    """
     while True:
-        dt = target_time - time.perf_counter()
-        if dt <= 0:
-            return
+        now = time.perf_counter()
+        dt = target_time - now
+
+        if dt <= 0:  # 已超时
+            return dt
+
         if dt > 0.002:
-            time.sleep(0)  # 让出 CPU
-        # dt < 2ms 时进入 busy-wait
+            time.sleep(0)  # 让出CPU
+        else:
+            pass  # busy-wait
+
+
+class Time(NamedTuple):
+    """计时器状态快照"""
+
+    elapsed: float  # 已用时间
+    remaining: float  # 剩余时间
+    ok: bool  # 是否未超时
+
+
+class Tick(NamedTuple):
+    """循环节拍快照"""
+
+    elapsed: float  # 总运行时间
+    delta: float  # 本轮循环中任务的实际耗时
+    ok: bool  # 是否未超时
 
 
 class Timer:
     def __init__(self, duration: float, auto_start=True):
         self.duration = duration
-        self._start_time: float | None = None
-        self._end_time: float | None = None
+        self._start: float | None = None
+        self._end: float | None = None
         if auto_start:
             self.reset()
 
     def reset(self):
-        self._start_time = time.perf_counter()
-        self._end_time = self._start_time + self.duration
+        self._start = time.perf_counter()
+        self._end = self._start + self.duration
         return self
 
     @property
     def done(self) -> bool:
-        if self._start_time is None or self._end_time is None:
+        """保持属性，方便简单的 if 判断"""
+        if self._start is None or self._end is None:
             self.reset()
-        # 修复点 1：此时 self._end_time 已通过 reset 确保不是 None
-        assert self._end_time is not None
-        return time.perf_counter() >= self._end_time
+        assert self._end is not None
+        return time.perf_counter() >= self._end
 
-    def elapsed(self) -> float | None:
-        if self.done:
-            return None
-        # 修复点 2：done 属性已保证了 _start_time 存在
-        assert self._start_time is not None
-        return time.perf_counter() - self._start_time
+    def step(self) -> Time:
+        """获取当前计时状态，永不返回 None"""
+        if self._start is None or self._end is None:
+            self.reset()
+
+        start, end = self._start, self._end
+        assert start is not None and end is not None
+
+        now = time.perf_counter()
+        elapsed = now - start
+        remaining = max(0.0, end - now)
+        is_ok = now < end
+
+        return Time(elapsed=elapsed, remaining=remaining, ok=is_ok)
 
     def __iter__(self):
         self.reset()
         return self
 
-    def __next__(self):
-        val = self.elapsed()
-        if val is None:
+    def __next__(self) -> Time:
+        state = self.step()
+        if not state.ok:
             raise StopIteration
-        return val
+        return state
+
 
 class Rate:
-    def __init__(self, hz: float, duration: float | None = None):
+    def __init__(self, hz: float, duration: float | None = None, warn=False):
         self.period = 1.0 / hz
         self.duration = duration
-        self._start_time: float | None = None
-        self._next_time: float | None = None
-        self._end_time: float | None = None
+        self.warn = warn
+        self.missed = 0
+        self._start = self._next = self._end = self._last = None
 
     def reset(self):
         now = time.perf_counter()
-        self._start_time = now
-        self._next_time = now
-        self._end_time = (now + self.duration) if self.duration is not None else None
+        self._start = self._next = self._last = now
+        self._end = (now + self.duration) if self.duration is not None else None
+        self.missed = 0
         return self
 
-    def sleep(self) -> float | None:
-        if self._start_time is None or self._next_time is None:
+    def sleep(self) -> Tick:
+        if self._start is None:
             self.reset()
-        
-        # 修复点 3：显式断言或重新获取局部变量以通过类型检查
-        start_time = self._start_time
-        next_time = self._next_time
-        assert start_time is not None and next_time is not None
+        start, next_t, last = self._start, self._next, self._last
+        assert start is not None and next_t is not None and last is not None
 
-        wait_until(next_time)
-        
         now = time.perf_counter()
-        if self._end_time is not None and now >= self._end_time:
-            return None
+        dt = now - last
 
-        elapsed = now - start_time
-        # 修复点 4：更新下一帧时间
-        self._next_time = next_time + self.period
-        return elapsed
+        if now > next_t:
+            self.missed += 1
+            if self.warn:
+                print(f"[Rate] Miss! dt:{dt:.3f}s")
+            self._next = now + self.period
+        else:
+            wait_until(next_t)
+            self._next = next_t + self.period
+
+        now_post = time.perf_counter()
+        self._last = now_post
+
+        is_ok = True
+        if self._end is not None and now_post >= self._end:
+            is_ok = False
+
+        return Tick(elapsed=now_post - start, delta=dt, ok=is_ok)
 
     def __iter__(self):
         self.reset()
         return self
 
-    def __next__(self):
-        val = self.sleep()
-        if val is None:
+    def __next__(self) -> Tick:
+        tick = self.sleep()
+        if not tick.ok:
             raise StopIteration
-        return val
+        return tick
+
 
 if __name__ == "__main__":
-    
-    # --- 测试 Timer (for 循环) ---
-    print("--- 测试 Timer (for 循环) ---")
+    # --- 1. Timer 测试 ---
+    print("--- 1. 测试 Timer (for 循环) ---")
+    for t_stat in Timer(0.5):
+        print(f"Timer For: {t_stat.elapsed=:.6f}, {t_stat.remaining=:.6f}")
+        time.sleep(0.1)
 
-    # 迭代器会自动调用 reset()，从 0 开始
-    for t in Timer(1.0):
-        print(f"for: {t:.2f}")
-        time.sleep(0.2)
+    print("\n--- 1. 测试 Timer (while + 海象运算符) ---")
+    timer = Timer(0.5)
+    # 一行完成：采样、赋值给 t_stat、判断是否未超时
+    while (t_stat := timer.step()).ok:
+        print(f"Timer Walrus: {t_stat.elapsed=:.6f}, {t_stat.remaining=:.6f}")
+        time.sleep(0.1)
 
+    print("\n--- 1. 测试 Timer (while 传统写法) ---")
+    timer.reset()
+    t_stat = timer.step()  # 循环前手动赋初值
+    while t_stat.ok:
+        print(f"Timer Classic: {t_stat.elapsed=:.6f}, {t_stat.remaining=:.6f}")
+        time.sleep(0.1)
+        t_stat = timer.step()  # 循环末尾手动更新
 
-    # --- 测试 Timer (while 循环) ---
-    print("\n--- 测试 Timer (while 循环) ---")
+    # --- 2. Rate 测试 (有限时长) ---
+    print("\n--- 2. 测试 Rate (for 循环, 10Hz, 0.5s) ---")
+    for tick in Rate(10, duration=0.5):
+        print(f"Rate For: {tick.elapsed=:.6f}, {tick.delta=:.6f}")
 
-    timer = Timer(1.0)
-    while not timer.done:
-        t = timer.elapsed()
-        if t is not None:
-            print(f"while: {t:.2f}")
-            time.sleep(0.2)
+    print("\n--- 2. 测试 Rate (while + 海象运算符, 10Hz) ---")
+    rate = Rate(10, duration=0.5)
+    while (tick := rate.sleep()).ok:
+        print(f"Rate Walrus: {tick.elapsed=:.6f}, {tick.delta=:.6f}")
+        time.sleep(0.02)
 
-
-    # --- 测试 Rate (for 循环) ---
-    print("\n--- 测试 Rate (for 循环, 10Hz, 1s) ---")
-
-    for t in Rate(10, duration=1.0):
-        print(f"for: {t:.2f}")
-
-
-    # --- 测试 Rate (while 循环) ---
-    print("\n--- 测试 Rate (while 循环, 5Hz, 1s) ---")
-
-    rate = Rate(5, duration=1.0)
+    print("\n--- 2. 测试 Rate (while 传统写法, 10Hz) ---")
+    rate.reset()
     while True:
-        t = rate.sleep()
-        if t is None:
+        tick = rate.sleep()
+        if not tick.ok:  # 手动判断状态并跳出
             break
-        print(f"while: {t:.2f}")
-        # 模拟工作耗时（只要小于 period 0.2s，频率就是稳定的）
-        time.sleep(0.05)
+        print(f"Rate Classic: {tick.elapsed=:.6f}, {tick.delta=:.6f}")
+        time.sleep(0.02)
 
-
-    # --- 测试 Rate (无限循环) ---
-    print("\n--- 测试 Rate (无限循环, 演示前 3 次) ---")
-
-    inf_rate = Rate(10) # 不传 duration
+    # --- 3. Rate 无限循环测试 ---
+    print("\n--- 3. 测试 Rate (无限循环, 演示前 50 次) ---")
+    inf_rate = Rate(100)  # 不传 duration, 默认无限循环
     count = 0
     while True:
-        t = inf_rate.sleep()
-        print(f"infinite: {t:.2f}")
+        tick = inf_rate.sleep()
+        # 无限循环下无需判断 tick.ok，除非内部有其他中断逻辑
+        print(f"Inf Classic: {tick.elapsed=:.6f}, {tick.delta=:.6f}")
         count += 1
-        if count >= 30: 
-            print("Stopping infinite test manually.")
+        if count >= 50:
             break
