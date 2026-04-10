@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     from looptick import LoopTick
 
-    from pydamiao.arm.tools import RateLoop
+    from pydamiao.arm.loops import Rate
 
     recorder = JointsRecorder()
     npy_path = Path("tmp/test.npy")
@@ -39,18 +39,18 @@ if __name__ == "__main__":
     loop = LoopTick()
 
     try:
-        for elapsed in RateLoop(500, duration=6):
+        for _ in Rate(200, 6):
             
             for joint in manager.joints_by_name.values():
                 joint.motor.set_mit(0,0,0,0,0)
 
-            # pos_dict = manager.get_joints_pos()
-            # pos_list = manager.pos_dict_to_list(pos_dict)
+            pos_dict = manager.get_joints_pos()
+            pos_list = manager.pos_dict_to_list(pos_dict)
 
             rprint(loop.tick_ms())
             
             # rrlog_joints(manager.pos_list_to_dict(pos_list))
-            # recorder.record(pos_list)
+            recorder.record(pos_list)
     
     finally:
         recorder.save(npy_path)

@@ -10,7 +10,7 @@ from pydamiao.arm.joint import JointManager
 from pydamiao.arm.recorder import JointsReader, JointsRecorder
 from pydamiao.bus import SerialBus
 
-from pydamiao.arm.tools import RateLoop
+from pydamiao.arm.loops import Rate
 from pydamiao.structs import ControlMode
 
 
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     npy_path = Path("tmp/test.npy")
 
     reader = JointsReader(npy_path)
-    loop = RateLoop(200, duration=999)  # 时间给很大
+    loop = Rate(200)  # 时间给很大
 
     # mode = ControlMode.POS_FORCE
     mode = ControlMode.POS_VEL
@@ -54,3 +54,4 @@ if __name__ == "__main__":
             manager.set_pos_list(pos, mode)
 
         print("done")
+        # time.sleep(0.001)
