@@ -44,19 +44,23 @@ manager.enable_all()
 manager.set_zero_all()
 
 # 控制电机运动示例
-timeout = 5
+timeout = 5000
 now = time.time()
 
 while (time.time() - now) < timeout:
 
     sin = math.sin(time.time())
 
-    motor1.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
-    motor2.set_pos_vel(sin * 0.1, 3)
-    motor3.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
+    # motor1.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
+    # motor2.set_pos_vel(sin * 0.1, 3)
+    # motor3.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
+
+    motor1.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
+    motor2.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
+    motor3.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
 
     print(
-        f"\r{motor1.name=}, {motor1.control_mode=}, {motor1.fault=}, {motor1.pos=:.2f}, {motor1.vel=:.2f}, {motor1.torque=:.2f}{' ' * 8}",
+        f"\r{motor1.name=}, {motor1.pos=:.6f} {motor1.pos*4=:.6f}, {motor3.pos:.6f} {' ' * 8}",
         end="",
     )
 

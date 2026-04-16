@@ -9,7 +9,7 @@ from rich import print as rprint
 from pydamiao.arm.config import joint_cfgs
 from pydamiao.arm.joint import JointManager
 from pydamiao.arm.recorder import JointsRecorder
-# from pydamiao.arm.vis import rrlog_joints
+from pydamiao.arm.vis import rrlog_joints
 from pydamiao.bus import SerialBus
 
 bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     loop = LoopTick()
 
     try:
-        for _ in Rate(200, 6):
+        for _ in Rate(200, 60):
             
             for joint in manager.joints_by_name.values():
                 joint.motor.set_mit(0,0,0,0,0)
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
             rprint(loop.tick_ms())
             
-            # rrlog_joints(manager.pos_list_to_dict(pos_list))
+            rrlog_joints(manager.pos_list_to_dict(pos_list))
             recorder.record(pos_list)
     
     finally:
