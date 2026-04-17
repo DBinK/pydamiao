@@ -10,10 +10,10 @@ manager = MotorManager(bus)
 motors = [
     manager.add_motor(MotorType.DM4310, 0x06, 0x16, name="wrist_3"),
     manager.add_motor(MotorType.DM4310, 0x05, 0x15, name="wrist_2"),
-    manager.add_motor(MotorType.DM4310, 0x04, 0x14, name="wrist_1"),
-    manager.add_motor(MotorType.DM4340, 0x03, 0x13, name="elbow"),
-    manager.add_motor(MotorType.DM4340, 0x02, 0x12, name="shoulder"),
-    manager.add_motor(MotorType.DM4340, 0x01, 0x11, name="base"),
+    # manager.add_motor(MotorType.DM4310, 0x04, 0x14, name="wrist_1"),
+    # manager.add_motor(MotorType.DM4340, 0x03, 0x13, name="elbow"),
+    # manager.add_motor(MotorType.DM4340, 0x02, 0x12, name="shoulder"),
+    # manager.add_motor(MotorType.DM4340, 0x01, 0x11, name="base"),
 ]
 
 def read_motor_configs(motor: Motor):
@@ -33,13 +33,18 @@ def read_motor_configs(motor: Motor):
         gr = motor.read_param(MotorReg.Gr).value
         sw_ver = motor.read_param(MotorReg.sw_ver).value
         SN = motor.read_param(MotorReg.SN).value
+        ESC_ID = motor.read_param(MotorReg.ESC_ID).value
+        MST_ID = motor.read_param(MotorReg.MST_ID).value
+
         
         print(f"位置映射范围 (PMAX): {pmax}")
         print(f"速度映射范围 (VMAX): {vmax}")
         print(f"扭矩映射范围 (TMAX): {tmax}")
         print(f"齿轮减速比 (Gr): {gr}")
-        print(f"软件版本: {sw_ver}")
-        print(f"电机编号: {SN}")
+        print(f"软件版本 (sw_ver) : {sw_ver}")
+        print(f"电机编号 (SN): {SN}")
+        print(f"主ID (MST_ID): {MST_ID}")
+        print(f"接收ID (ESC_ID): {ESC_ID}")
         
         # 3. 读取控制模式
         mode = motor.read_param(MotorReg.CTRL_MODE).value

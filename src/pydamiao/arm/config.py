@@ -4,8 +4,8 @@ from enum import IntEnum
 from pydamiao.structs import MotorType
 from pydamiao.arm.joint import JointCfg
 
-joint_cfgs = [                                    # wrist_3 电机固件出厂刷错到 4340, 这里暂时加上缩放
-    JointCfg(MotorType.DM4310, 0x06, 0x16, "wrist_3",  direction=-1, scale=1/4),  
+joint_cfgs = [                                    
+    JointCfg(MotorType.DM4310, 0x06, 0x16, "wrist_3",  direction=-1),  
     JointCfg(MotorType.DM4310, 0x05, 0x15, "wrist_2",  direction=-1),
     JointCfg(MotorType.DM4310, 0x04, 0x14, "wrist_1",  direction=-1),
     JointCfg(MotorType.DM4340, 0x03, 0x13, "elbow",    direction=-1),

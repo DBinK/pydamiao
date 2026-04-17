@@ -18,7 +18,7 @@ class JointCfg():
     name: str
     offset: float = 0.0
     direction: float  = 1      # 方向系数, 取值 -1 或 1 , 默认正转为 1
-    scale: float = 1.0  # 倍率系数，默认为1.0
+    scale: float = 1.0         # 倍率系数，默认为1.0, 一般用于调整减速比
 
     # 默认参数
     pos: float = 0.0  # 默认位置
