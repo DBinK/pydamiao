@@ -231,6 +231,12 @@ class JointManager:
         for joint in self.joints_by_name.values():
             joint.motor.set_mit(0,0,0,0,0)
     
+    def set_mit_zero(self):
+        """用于示教模式下, 持续发送且接收反馈帧, 从而更新电机位置"""
+        for joint in self.joints_by_name.values():
+            joint.motor.set_mit(0,0,0,0,0)
+
     def print_joints_cfg(self):
+        """用于打印joints的配置信息"""
         for joint in self.joints_by_name.values():
             rprint(joint.cfg)
