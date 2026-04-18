@@ -4,9 +4,11 @@ from enum import IntEnum
 from pydamiao.structs import MotorType
 from pydamiao.arm.joint import JointCfg
 
+import numpy as np
+
 joint_cfgs = [                                    
     JointCfg(MotorType.DM4310, 0x06, 0x16, "wrist_3",  direction=-1),  
-    JointCfg(MotorType.DM4310, 0x05, 0x15, "wrist_2",  direction=-1),
+    JointCfg(MotorType.DM4310, 0x05, 0x15, "wrist_2",  direction=-1, offset=np.deg2rad(-45)),
     JointCfg(MotorType.DM4310, 0x04, 0x14, "wrist_1",  direction=-1),
     JointCfg(MotorType.DM4340, 0x03, 0x13, "elbow",    direction=-1),
     JointCfg(MotorType.DM4340, 0x02, 0x12, "shoulder", direction=-1),

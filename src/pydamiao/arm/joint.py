@@ -34,7 +34,7 @@ class JointCfg():
     pvt_current = 2000   # 电流标幺值放大10000倍, 范围 0-10000
 
     # POS_VEL 模式参数
-    pv_vel: float = 5000.0
+    pv_vel: float = 50000.0
 
     # 机器人关节参数
     pos_min: float = -math.pi    # 默认最小位置
