@@ -1,7 +1,36 @@
-
-
 <p align="center">
   <img src="https://github.com/user-attachments/assets/04fbae2c-53e7-46ee-bb77-a79b0d9d8597" style="width: 40%; height: auto;">
+</p>
+
+<p align="center">
+  <a href="https://zread.ai/DBinK/pydamiao" target="_blank"><img src="https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff" alt="zread"/></a>
+
+  <!-- PyPI -->
+  <a href="https://pypi.org/project/pydamiao/">
+    <img src="https://img.shields.io/pypi/v/pydamiao?color=blue&label=PyPI&logo=pypi&logoColor=white" />
+  </a>
+
+  <!-- License -->
+  <a href="https://github.com/DBinK/pydamiao/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/DBinK/pydamiao?color=blue" />
+  </a>
+
+  <!-- CI -->
+  <a href="https://github.com/DBinK/pydamiao/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/DBinK/pydamiao/test_and_publish.yml?branch=main&logo=githubactions&logoColor=white" />
+  </a>
+
+
+  <!-- Last Commit -->
+  <a href="https://github.com/DBinK/pydamiao/commits/main">
+    <img src="https://img.shields.io/github/last-commit/DBinK/pydamiao" />
+  </a>
+
+  <!-- Stars -->
+  <a href="https://github.com/DBinK/pydamiao">
+    <img src="https://img.shields.io/github/stars/DBinK/pydamiao?style=social" />
+  </a>
+
 </p>
 
 <div align="center">
@@ -120,7 +149,9 @@ bus.close()
 
 文档正在补充中... 
 
-可先查看示例 [`examples`](./examples) 目录, 包含了本库几乎全部用法:
+可先查看 [Zread](https://zread.ai/DBinK/pydamiao) 生成的说明文档
+
+或先查看示例 [`examples`](./examples) 目录, 包含了本库几乎全部用法:
 
 - [`base.py`](./examples/base.py): 基础用法, 包含常用 API 的使用
 - [`motor_single.py`](./examples/motor_single.py): 单电机控制
