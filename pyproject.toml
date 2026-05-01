@@ -1,6 +1,6 @@
 [project]
 name = "pydamiao"
-version = "0.1.2"
+version = "0.1.3"
 description = "An unofficial Damiao motor control library, developed based on the official SDK. 一个非官方的达妙电机控制库, 基于官方sdk二次开发"
 readme = "README.md"
 authors = [
