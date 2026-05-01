@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi 
-      url: https://pypi.org/p/looprt
+      url: https://pypi.org/p/pydamiao   # 记得修改包地址
     permissions:
       id-token: write
       contents: read # 检出代码需要的权限
