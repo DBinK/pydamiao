@@ -582,3 +582,11 @@ class MotorManager:
             motor.slave_id: motor.clean_error()
             for motor in self._motors_by_slave_id.values()
         }
+
+    def set_mode_all(self, mode: ControlMode) -> dict[MotorId, Result[ControlMode]]:
+        """切换所有已注册电机的控制模式。"""
+        return {
+            motor.slave_id: motor.set_mode(mode)
+            for motor in self._motors_by_slave_id.values()
+        }
+

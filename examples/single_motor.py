@@ -8,8 +8,8 @@ bus = SerialBus("COM9", baudrate=921600, timeout=0.1)
 motor = Motor(bus=bus, motor_type=MotorType.DM4310, slave_id=0x06, master_id=0x16, name="wrist_3")
 
 # 读取和修改电机参数示例
-if motor.set_mode(ControlMode.VEL):
-    print(f"switch POS_VEL success, current mode: {motor.control_mode}")
+if motor.set_mode(ControlMode.VEL).is_ok:
+    print(f"switch VEL success, current mode: {motor.control_mode}")
 
 print("PMAX:", motor.read_param(MotorReg.PMAX).value)
 print("MST_ID:", motor.read_param(MotorReg.MST_ID).value)

@@ -34,7 +34,7 @@
 
 ## 安装
 
-从 PYPI 安装
+从 [PyPI](https://pypi.org/project/pydamiao/) 安装
 ```bash
 uv pip install pydamiao 
 ```
