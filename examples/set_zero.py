@@ -1,6 +1,5 @@
 import time
 from pydamiao import MotorManager, SerialBus, MotorType, MotorReg, ControlMode
-from pydamiao.motor import Motor
 
 # 初始化总线和管理器
 bus = SerialBus("COM9", baudrate=921600, timeout=0.01)

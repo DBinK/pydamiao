@@ -7,6 +7,7 @@ Hex: TypeAlias = int       # 用于描述一些用0x开头的十六进制数
 MotorId: TypeAlias = int   # slave_id 和 master_id 标注用
 RegId: TypeAlias = int     # 意义为包含 MotorReg 及其暂未定义的 RID
 
+
 class MotorType(IntEnum):
     """电机类型枚举类"""
     DM4310 = 0
@@ -23,13 +24,13 @@ class MotorType(IntEnum):
     DMG6220 = 11
 
 
+# 电机限制参数, 从官方文档查询整理而来, 可能不完全准确, 仅供参考
 class MotorLimits(NamedTuple):
     """电机最大限制参数"""
     POS_MAX: float     # 位置限制 (弧度)
     VEL_MAX: float     # 角速度限制 (弧度/秒)
     TORQUE_MAX: float  # 力矩限制 (牛·米)
 
-# 电机限制参数 - 每个电机型号对应的 [POS_MAX, VEL_MAX, TORQUE_MAX]
 MOTOR_LIMITS = {
     MotorType.DM4310: MotorLimits(12.5, 30, 10),
     MotorType.DM4310_48V: MotorLimits(12.5, 50, 10),
@@ -48,9 +49,10 @@ MOTOR_LIMITS = {
 
 class MotorReg(IntEnum):
     """
-    电机寄存器参数枚举, 官方文档中称为 RID
+    电机寄存器参数枚举, 官方文档中称为 RID, 为了更清晰地表达其含义, 使用 MotorReg 来命名
     从固件的更新日志文档查询: https://gitee.com/kit-miao/motor-firmware
     """
+    # 寄存器名和值    # 描述, 读写属性, 数据类型
     UV_Value = 0      # 低压保护值, RW, float
     KT_Value = 1      # 扭矩系数, RW, float
     OT_Value = 2      # 过温保护值, RW, float
@@ -100,10 +102,10 @@ class MotorReg(IntEnum):
     p_m = 80          # 电机当前位置, RO, float
     xout = 81         # 输出轴位置, RO, float
     
-    @staticmethod
-    def is_int_type(reg_id: int) -> bool:
+    @classmethod
+    def is_int_type(cls, reg_id: int) -> bool:
         """
-        这是一个规则函数, 判断某个电机寄存器处对应的值需要的类型, 是否为整数, 否则为浮点数
+        判断某个电机寄存器处对应的值需要的类型, 是则为整数 int , 否则为浮点数 float
         """
         return (7 <= reg_id <= 10) or (13 <= reg_id <= 16) or (35 <= reg_id <= 36)
 
@@ -114,13 +116,6 @@ class ControlMode(IntEnum):
     POS_VEL = 2     # 位置-速度控制
     VEL = 3         # 速度控制
     POS_FORCE = 4   # 位置-扭矩控制
-
-
-class MotorState(NamedTuple):
-    """电机运动状态结构体"""
-    pos: float
-    vel: float
-    torque: float
 
 
 class CanResp(IntEnum):
@@ -151,3 +146,9 @@ class MotorFault(IntEnum):
     COMM_LOSS = 0xD       # 通讯丢失
     OVERLOAD = 0xE        # 过载
 
+# 数据容器
+class MotorState(NamedTuple):
+    """电机运动状态结构体"""
+    pos: float
+    vel: float
+    torque: float

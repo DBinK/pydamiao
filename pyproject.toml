@@ -1,6 +1,6 @@
 [project]
 name = "pydamiao"
-version = "0.1.0"
+version = "0.1.1"
 description = "An unofficial Damiao motor control library, developed based on the official SDK. 一个非官方的达妙电机控制库, 基于官方sdk二次开发"
 readme = "README.md"
 authors = [
@@ -27,19 +27,3 @@ dev = [
     "rich>=14.3.3"
 ]
 
-# [tool.pytest.ini_options]
-# testpaths = ["tests"]
-# python_files = ["test_*.py"]
-# python_classes = ["Test*"]
-# python_functions = ["test_*"]
-# addopts = "-v --strict-markers"
-# markers = [
-#     "slow: marks tests as slow",
-#     "integration: marks tests as integration tests",
-# ]
-
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-# exclude = [".venv", "tmp"]
-# reportMissingModuleSource = false
