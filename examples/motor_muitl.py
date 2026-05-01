@@ -8,6 +8,7 @@ from pydamiao.structs import ControlMode
 bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
 manager = MotorManager(bus)
 
+# 添加电机
 motor1 = manager.add_motor(MotorType.DM4310, 0x06, 0x16, name="wrist_3")
 motor2 = manager.add_motor(MotorType.DM4310, 0x05, 0x15, name="wrist_2")
 motor3 = manager.add_motor(MotorType.DM4310, 0x04, 0x14, name="wrist_1")
@@ -22,7 +23,7 @@ ret = [
     motor2.set_mode(ControlMode.POS_VEL),
     motor3.set_mode(ControlMode.MIT),
 ]
-print(ret)
+print(f"设置控制模式结果: {[r.is_ok for r in ret]}, 当前模式: {[motor1.control_mode, motor2.control_mode, motor3.control_mode]}")
 
 print("\nMotor1:")
 print("sub_ver:", motor1.read_param(MotorReg.sub_ver).value)
@@ -51,23 +52,20 @@ while (time.time() - now) < timeout:
 
     sin = math.sin(time.time())
 
-    # motor1.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
-    # motor2.set_pos_vel(sin * 0.1, 3)
-    # motor3.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
+    motor1.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
+    motor2.set_pos_vel(sin * 0.1, 3)
+    motor3.set_mit(sin * 0.2, 0, 15.5, 1.0, 0.0)
 
-    motor1.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
-    motor2.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
-    motor3.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
+    # motor1.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
+    # motor2.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
+    # motor3.set_mit(0.0, 0.0, 0.0, 0.0, 0.0)
 
     print(
         f"\r{motor1.name=}, {motor1.pos=:.6f} {motor1.pos*4=:.6f}, {motor3.pos:.6f} {' ' * 8}",
         end="",
     )
 
-    # ret = manager.refresh_all_status()
-    # print(ret)
-
     time.sleep(0.001)
 
 # 测试结束关闭电机
-# manager.disable_all()  # 程序结束前, 推荐手动失能所有电机
+manager.disable_all()  # 程序结束前, 推荐手动失能所有电机

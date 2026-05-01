@@ -6,7 +6,7 @@ from pydamiao.motor import Motor
 bus = SerialBus("COM9", baudrate=921600, timeout=0.01)
 manager = MotorManager(bus)
 
-# 添加电机
+# 注册电机
 motors = [
     manager.add_motor(MotorType.DM4310, 0x06, 0x16, name="wrist_3"),
     manager.add_motor(MotorType.DM4310, 0x05, 0x15, name="wrist_2"),
@@ -62,5 +62,5 @@ for m in motors:
         print(f"与电机 {m.name} 通讯失败: {e}")
 
 
-
+manager.disable_all()  # 测试结束失能电机
 bus.close()
