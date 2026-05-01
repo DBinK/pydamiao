@@ -28,6 +28,7 @@ for id, motor in manager.motors.items():
 # 单独控制电机
 if not motor1.set_mode(ControlMode.POS_VEL).is_ok:
     print("motor1 切换到 POS_VEL 失败")
+    
 if not motor2.set_mode(ControlMode.VEL).is_ok:
     print("motor2 切换到 VEL 失败")
 

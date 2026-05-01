@@ -20,7 +20,7 @@
 
 一个非官方的达妙电机 Python 库。
 
-`pydamiao` 基于官方 SDK 的工作流做了更 Python 风格的封装，提供串口通信、电机管理、参数读写和常见控制模式的高层接口，适合快速集成到自己的项目中。
+`pydamiao` 基于官方 SDK 的工作流做了更 Pythonic 的封装, 使其开发体验更好。`pydamiao` 提供串口通信、电机管理、参数读写和常见控制模式的高层接口，适合快速集成到自己的项目中。
 
 
 ## 特性
@@ -28,9 +28,8 @@
 - 基于 `pyserial` 的简单串口总线封装
 - 提供 `Motor` 和 `MotorManager` 高层接口
 - 同时支持单电机和多电机场景
-- 内置参数读写辅助方法
-- 支持 `MIT`、`VEL`、`POS_VEL` 等常见控制模式
-- 使用类 Rust 的 `Result` 返回格式, 显式处理错误, 避免大量 `None` 判断
+- 支持 `MIT`、`VEL`、`POS_VEL`、`POS_FORCE` 等常见控制模式
+- 可能会失败的接口, 使用类似 Rust 的 `Result` 返回格式, 显式处理错误, 避免大量 `None` 判断
 
 ## 安装
 
@@ -84,6 +83,7 @@ for id, motor in manager.motors.items():
 # 单独控制电机
 if not motor1.set_mode(ControlMode.POS_VEL).is_ok:
     print("motor1 切换到 POS_VEL 失败")
+
 if not motor2.set_mode(ControlMode.VEL).is_ok:
     print("motor2 切换到 VEL 失败")
 
@@ -106,9 +106,17 @@ bus.close()
 - `MotorManager`：同一总线上的多电机管理器
 - `ControlMode`、`MotorType`、`MotorReg`：协议相关枚举和辅助类型
 
-## 使用文档
+## 使用文档 和 示例
 
-文档正在补充中... 可先查看示例 [`examples`](./examples) 目录, 包含了本库几乎全部用法。
+文档正在补充中... 
+
+可先查看示例 [`examples`](./examples) 目录, 包含了本库几乎全部用法:
+
+- [`base.py`](./examples/base.py): 基础用法, 包含常用 API 的使用
+- [`motor_single.py`](./examples/motor_single.py): 单电机控制
+- [`motor_muitl.py`](./examples/motor_muitl.py): 多电机控制
+- [`calibration.py`](./examples/calibration.py): 零点校准 (多电机)
+- [`read_reg.py`](./examples/read_reg.py): 读取电机寄存器中的值
 
 ## 项目状态
 
