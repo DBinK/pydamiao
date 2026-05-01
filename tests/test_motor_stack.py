@@ -3,7 +3,8 @@ import time
 
 import pytest
 
-from pydamiao import ControlMode, Motor, MotorManager, MotorReg, MotorType, Result, SerialBus
+from pydamiao import ControlMode, Motor, MotorManager, MotorReg, MotorType, Result
+from pydamiao.bus import SerialBus
 from pydamiao.protocol import DamiaoProtocol
 from pydamiao.structs import CanResp, MotorFault, MOTOR_LIMITS
 from pydamiao.utils import float_to_uint, float_to_uint8s, int_to_uint8s
@@ -240,7 +241,7 @@ def test_control_commands_auto_switch_mode_before_sending():
             make_param_payload(0x06, 0x55, MotorReg.CTRL_MODE, int(ControlMode.POS_VEL)),
         )
         feed_later(fake_serial, mode_frame)
-        result = motor.set_pos_vel(1.0, 2.0)
+        result = motor.set_pos_vel(1.0, 2.0, auto_mode=True)
 
         assert result.is_ok
         assert motor.control_mode == ControlMode.POS_VEL
@@ -361,7 +362,7 @@ def test_motor_manager_supports_direct_registration_and_batch_commands():
         results = manager.enable_all()
 
         assert manager[0x06] is direct_motor
-        assert manager[0x16] is direct_motor
+        assert manager[0x07] is added_motor
         assert manager.get(0x07) is added_motor
         assert all(result.is_ok for result in results.values())
         assert len(fake_serial.writes) == 2
